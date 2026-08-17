@@ -27,8 +27,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [showEcommerceTooltip, setShowEcommerceTooltip] = useState(false);
 
   // Formularios de Autenticación
+  const [isRegister, setIsRegister] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [nombreField, setNombreField] = useState('');
   const [userField, setUserField] = useState('');
   const [passField, setPassField] = useState('');
+  const [remember, setRemember] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
 
   useEffect(() => {
@@ -113,7 +117,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
       const sessionObj = {
         id_usuario: userDoc.id,
-        nombre: userData.nombre || 'Usuario ATOM',
+        nombre: isRegister && nombreField ? nombreField : (userData.nombre || 'Usuario ATOM'),
         rol: userRol,
         user: userData.user || term,
         id_cuenta: idCuenta,
@@ -125,13 +129,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       setUserAuth(sessionObj);
       localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
 
-      // REDIRECCIÓN INTELIGENTE SEGÚN EL ROL AL INICIAR SESIÓN
+      // REDIRECCIÓN INTELIGENTE SEGÚN EL ROL
       if (userRol === 'ADMIN') {
         router.push('/reportes');
       } else if (userRol === 'GERENTE_BODEGA') {
         router.push('/productos');
       } else {
-        // VENDEDOR / CAJERO POS
         router.push('/ventas');
       }
 
@@ -148,20 +151,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     router.push('/');
   };
 
-  // Evaluar si la cuenta está completamente vacía para activar el Wizard de Onboarding (Solo Admin)
   const esCuentaNueva = numSucursales === 0 && numProductos === 0;
-
-  // Rol activo del usuario
   const rolActual = userAuth?.rol || 'ADMIN';
 
-  // Mapeo Estructurado de Navegación Lateral con Control de Permisos por Rol
   const menuItems = [
     {
       label: 'Reportes / Analytics',
       path: '/reportes',
       disabled: false,
       badge: null,
-      rolesPermitidos: ['ADMIN'], // Solo Admin
+      rolesPermitidos: ['ADMIN'],
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 012-2h2a2 2 0 012 2v6m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2M5 19V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2z" />
@@ -172,7 +171,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       label: 'Sucursales / Sedes',
       path: '/sucursales',
       disabled: false,
-      rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA'], // ✅ Visible para Gerente de Bodega y Admin
+      rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA'],
       badge: numSucursales === 0 ? (
         <span className="bg-[#C81FDA]/15 text-[#C81FDA] border border-[#C81FDA]/40 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
           ! Ingresar
@@ -188,7 +187,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       label: 'Catálogo Productos',
       path: '/productos',
       disabled: false,
-      rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA', 'VENDEDOR'], // ✅ Visible para todos
+      rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA', 'VENDEDOR'],
       badge: numProductos === 0 ? (
         <span className="bg-red-950/60 text-red-400 border border-red-800/40 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider">
           Sin datos
@@ -205,7 +204,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       path: '/clientes',
       disabled: false,
       badge: null,
-      rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA', 'VENDEDOR'], // ✅ Visible para todos
+      rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA', 'VENDEDOR'],
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 012-2h2a2 2 0 012 2v1m-4 0h4m-6 7a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 3h3" />
@@ -217,7 +216,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       path: '/ventas',
       disabled: false,
       badge: null,
-      rolesPermitidos: ['ADMIN', 'VENDEDOR'], // ❌ Oculto temporalmente para Gerente de Bodega
+      rolesPermitidos: ['ADMIN', 'VENDEDOR'],
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
@@ -229,7 +228,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       path: '/facturas',
       disabled: false,
       badge: null,
-      rolesPermitidos: ['ADMIN', 'VENDEDOR'], // ❌ Oculto para Gerente de Bodega
+      rolesPermitidos: ['ADMIN', 'VENDEDOR'],
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 01-2-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -240,7 +239,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       label: 'Equipo / Vendedores',
       path: '/vendedores',
       disabled: false,
-      rolesPermitidos: ['ADMIN'], // Solo Admin
+      rolesPermitidos: ['ADMIN'],
       badge: numVendedores === 0 || numVendedores === 1 ? (
         <span className="bg-amber-950/60 text-amber-300 border border-amber-800/40 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider">
           + Añadir
@@ -256,7 +255,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       label: 'Conexiones E-Commerce',
       path: '/integraciones',
       disabled: true,
-      rolesPermitidos: ['ADMIN'], // Solo Admin
+      rolesPermitidos: ['ADMIN'],
       badge: (
         <span className="bg-[#6884C5]/20 text-[#6884C5] border border-[#6884C5]/40 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider">
           PROX.
@@ -270,7 +269,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     },
   ];
 
-  // FILTRADO DINÁMICO DEL MENÚ SEGÚN EL ROL ACTIVO
   const menuVisibles = menuItems.filter(item => item.rolesPermitidos.includes(rolActual));
 
   if (loadingSession) {
@@ -279,65 +277,173 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <body className="bg-[#1D2935] min-h-screen flex items-center justify-center text-slate-300 font-sans">
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-[#0DE8C0] border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-xs font-semibold tracking-wider uppercase">Cargando ATOM STOCK...</span>
+            <span className="text-xs font-satoshi-black tracking-wider uppercase">Cargando ATOM STOCK...</span>
           </div>
         </body>
       </html>
     );
   }
 
+  /* -------------------------------------------------------------------------- */
+  /* PANTALLA DE LOGIN UNIFICADA CON LA PALETA DE ATOM STOCK                    */
+  /* -------------------------------------------------------------------------- */
   if (!userAuth) {
     return (
       <html lang="es">
         <body className="bg-[#1D2935] min-h-screen text-slate-100 antialiased font-sans select-none flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-[#253443] border border-slate-700/60 p-8 rounded-2xl shadow-2xl space-y-6">
+            
+            {/* CABECERA CON LOGO Y ESTILOS DE LA SUITE */}
             <div className="text-center">
               <h1 className="text-3xl font-black text-white font-satoshi-black">
                 ATOM <span className="text-[#0DE8C0]">STOCK</span>
               </h1>
-              <p className="text-xs text-slate-400 mt-1 font-satoshi-regular">Suite de Control Multibodega Omnicanal</p>
+              <p className="text-xs text-slate-400 mt-1 font-satoshi-regular">
+                {isRegister
+                  ? 'Ingresa tus datos para registrar tu empresa'
+                  : 'Suite de Control Multibodega Omnicanal'}
+              </p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
+              
+              {/* CAMPO DE NOMBRE COMPLETO (Solo visible al registrarse) */}
+              {isRegister && (
+                <div>
+                  <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
+                    Nombre completo <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3.5 text-sm text-white focus:outline-none transition font-satoshi-regular placeholder:text-slate-500"
+                    value={nombreField}
+                    onChange={(e) => setNombreField(e.target.value)}
+                    placeholder="Leonardo Villamizar"
+                  />
+                </div>
+              )}
+
+              {/* CAMPO DE USUARIO / CORREO */}
               <div>
-                <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">Usuario / Correo</label>
+                <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
+                  Usuario / Correo <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
-                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3.5 text-sm text-white focus:outline-none transition font-satoshi-regular"
+                  required
+                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3.5 text-sm text-white focus:outline-none transition font-satoshi-regular placeholder:text-slate-500"
                   value={userField}
                   onChange={(e) => setUserField(e.target.value)}
                   placeholder="admin@atomstock.com"
-                  required
                 />
               </div>
 
+              {/* CAMPO DE CONTRASEÑA */}
               <div>
-                <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">Contraseña</label>
-                <input
-                  type="password"
-                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3.5 text-sm text-white focus:outline-none transition font-satoshi-regular"
-                  value={passField}
-                  onChange={(e) => setPassField(e.target.value)}
-                  placeholder="••••••••••••"
-                  required
-                />
+                <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
+                  Contraseña <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3.5 text-sm text-white focus:outline-none transition font-satoshi-regular placeholder:text-slate-500 pr-10"
+                    value={passField}
+                    onChange={(e) => setPassField(e.target.value)}
+                    placeholder="••••••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#0DE8C0] transition"
+                  >
+                    {showPassword ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3l18 18" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
 
+              {/* OPCIONES SECUNDARIAS (RECORDAR SESIÓN Y RECUPERACIÓN) */}
+              {!isRegister && (
+                <div className="flex items-center justify-between text-xs pt-1 font-satoshi-regular">
+                  <label className="flex items-center text-slate-400 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                      className="rounded bg-[#1D2935] border-slate-700 text-[#0DE8C0] focus:ring-0 mr-2 w-3.5 h-3.5"
+                    />
+                    Recordar sesión
+                  </label>
+                  <button
+                    type="button"
+                    className="text-slate-400 hover:text-[#0DE8C0] transition"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+              )}
+
+              {/* BOTÓN PRINCIPAL CON COLOR TURQUESA #0DE8C0 DE LA MARCA */}
               <button
                 type="submit"
                 disabled={loadingAction}
-                className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3.5 rounded-xl text-xs uppercase tracking-wider transition duration-300 shadow-lg"
+                className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3.5 rounded-xl text-xs uppercase tracking-wider transition duration-300 shadow-lg disabled:opacity-50"
               >
-                {loadingAction ? 'Validando Acceso...' : 'Ingresar'}
+                {loadingAction
+                  ? 'Validando Acceso...'
+                  : isRegister
+                  ? 'Registrarse'
+                  : 'Ingresar'}
               </button>
             </form>
+
+            {/* OPCIÓN PARA CAMBIAR ENTRE LOGIN Y REGISTRO */}
+            <div className="text-center text-xs text-slate-400 font-satoshi-regular pt-2">
+              {isRegister ? (
+                <span>
+                  ¿Ya tienes una cuenta?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsRegister(false)}
+                    className="text-[#0DE8C0] font-satoshi-black hover:underline ml-1"
+                  >
+                    Inicia sesión
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  ¿No tienes una cuenta?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsRegister(true)}
+                    className="text-[#0DE8C0] font-satoshi-black hover:underline ml-1"
+                  >
+                    Regístrate
+                  </button>
+                </span>
+              )}
+            </div>
+
           </div>
         </body>
       </html>
     );
   }
 
-  // Cálculo de Progreso para el Setup Wizard de Onboarding Inicial
+  /* -------------------------------------------------------------------------- */
+  /* PANEL PRINCIPAL DASHBOARD (MANTIENE LA ESTRUCTURA IDENTICA ORIGINAL)        */
+  /* -------------------------------------------------------------------------- */
   let pasocumplidoCount = 0;
   if (numSucursales && numSucursales > 0) pasocumplidoCount++;
   if (numProductos && numProductos > 0) pasocumplidoCount++;
@@ -348,7 +454,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body className="bg-[#1D2935] text-slate-100 min-h-screen flex antialiased font-sans">
 
-        {/* SIDEBAR CON MARCA OFICIAL #1D2935 */}
+        {/* SIDEBAR OFICIAL DE ATOM STOCK */}
         <aside className="w-64 bg-[#1D2935] border-r border-slate-700/60 text-white min-h-screen flex flex-col justify-between p-4 shadow-xl shrink-0">
           <div>
             <div className="p-3 border-b border-slate-700/60 mb-6 flex items-center gap-3">
