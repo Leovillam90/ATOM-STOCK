@@ -1,9 +1,16 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+:root {
+  color-scheme: dark;
+}
+
+html,
 body {
+  background-color: #1D2935 !important;
+  color: #f8fafc;
+  min-height: 100vh;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
-  background-color: #f1f5f9;
-  color: #0f172a;
 }
