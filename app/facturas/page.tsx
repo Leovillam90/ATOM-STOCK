@@ -162,7 +162,6 @@ export default function FacturasPage() {
             const ivaMonto = (subtotal * ivaPct) / 100;
             const total = subtotal + ivaMonto;
             
-            // GENERACIÓN AUTOMÁTICA DEL NÚMERO DE FACTURA
             const idFacturaGen = `FE-${canal.toUpperCase().slice(0,3)}-${Math.floor(100000 + Math.random() * 900000)}`;
 
             const nuevaFactura = {
@@ -266,7 +265,7 @@ export default function FacturasPage() {
             </span>
           </div>
           <h1 className="text-3xl font-black text-white tracking-tight font-satoshi-black">
-            Facturación {esVendedor ? 'de Mi Caja' : 'E-Commerce (Dropi / Véndelo / Master)'}
+            Facturación
           </h1>
           <p className="text-xs text-[#A0AEC0] mt-1 font-satoshi-regular max-w-xl">
             Carga masiva con generación automática de facturas y exportación contable completa.
@@ -436,13 +435,16 @@ export default function FacturasPage() {
         </table>
       </div>
 
-      {/* MODAL CARGA MASIVA (DROPI / VÉNDELO / MASTER) */}
+      {/* MODAL CARGA MASIVA (DROPI / VÉNDELO / MASTER) CON ÍCONO 2D EN LUGAR DE EMOJI */}
       {showModalEcommerce && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 p-6 rounded-2xl max-w-md w-full space-y-4 shadow-2xl text-xs text-white">
             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
               <h2 className="text-sm font-satoshi-black uppercase flex items-center gap-2">
-                <span>📦 Importación Masiva (Dropi / Véndelo / Master)</span>
+                <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                <span>Importación Masiva (Dropi / Véndelo / Master)</span>
               </h2>
               <button onClick={() => setShowModalEcommerce(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
@@ -555,7 +557,7 @@ export default function FacturasPage() {
               className="w-full bg-[#0DE8C0] text-[#1D2935] font-satoshi-black py-3 rounded-xl uppercase shadow flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
               <span>Imprimir Comprobante PDF</span>
             </button>
