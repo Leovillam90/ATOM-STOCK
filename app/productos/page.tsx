@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function ProductosPage() {
@@ -229,11 +229,33 @@ export default function ProductosPage() {
     return { base, iva };
   };
 
-  // GUARDAR O ACTUALIZAR PRODUCTO
+  // AUXILIAR DE LIMPIEZA DE FORMATEOS FINANCIEROS (Ej: "$ 120,00" -> 120)
+  const parseMontoPuro = (val: any) => {
+    if (val === undefined || val === null) return 0;
+    let numStr = String(val).replace(/[\$\s"]/g, '').trim();
+    if (!numStr) return 0;
+    if (numStr.includes(',')) {
+      numStr = numStr.replace(/\./g, '').replace(',', '.');
+    }
+    const parsed = Number(numStr);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // GUARDAR O ACTUALIZAR PRODUCTO (CON VALIDACIÓN DE SKU DUPLICADO)
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!skuInput.trim() || !nombre.trim()) {
       return alert('Ingresa el SKU y el Nombre del producto.');
+    }
+
+    const skuClean = skuInput.trim().toUpperCase();
+
+    // VALIDACIÓN: NO PERMITIR SKU REPETIDOS EN CREACIÓN
+    if (!editingSku) {
+      const existeProd = productos.some(p => String(p.sku || '').toUpperCase() === skuClean);
+      if (existeProd) {
+        return alert(`El SKU "${skuClean}" ya existe en el sistema. Utiliza un SKU único o edita el producto existente.`);
+      }
     }
 
     if (editingSku && !motivoEdicion.trim()) {
@@ -242,7 +264,6 @@ export default function ProductosPage() {
 
     setLoading(true);
     try {
-      const skuClean = skuInput.trim().toUpperCase();
       const fechaActualISO = new Date().toISOString();
 
       const precioDefinido = Number(plocal) || Number(pecom) || Number(pmayor) || 0;
@@ -286,13 +307,11 @@ export default function ProductosPage() {
         pecom: Number(pecom) || 0,
         precio: precioDefinido,
 
-        // IVA Y BASE GRAVABLE CALCULADA DE FORMA INVERSA
         aplica_iva: aplicaIva,
         iva: tarifaAplicada,
         base_gravable_estimada: base,
         iva_monto_estimado: iva,
 
-        // COSTOS UNITARIOS
         costo_importacion: Number(costoImportacion) || 0,
         costo_fulfilment: Number(costoFulfilment) || 0,
         costo_total: (Number(costoImportacion) || 0) + (Number(costoFulfilment) || 0),
@@ -326,7 +345,7 @@ export default function ProductosPage() {
     }
   };
 
-  // DESCARGAR PLANTILLA CSV INCLUYENDO COLUMNAS DE COSTOS DE FABRICACIÓN/COMPRA Y FULFILLMENT
+  // DESCARGAR PLANTILLA CSV INCLUYENDO COLUMNAS DE COSTOS Y FULFILLMENT
   const handleDescargarPlantillaProductos = () => {
     const bom = '\uFEFF';
     const csvContent = 
@@ -346,7 +365,7 @@ export default function ProductosPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CSV CON COSTOS E IVA
+  // PROCESAR CARGA MASIVA CSV CON DETECCIÓN Y ACTUALIZACIÓN INTELIGENTE DE SKU DUPLICADOS
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV o Excel.');
@@ -369,7 +388,8 @@ export default function ProductosPage() {
 
         const separador = lines[0].includes(';') ? ';' : ',';
         const idSedeDefecto = userAuth?.id_sucursal || (sucursales.length > 0 ? sucursales[0].id_sucursal : 'SUC_PRINCIPAL');
-        let importados = 0;
+        let nuevosCreados = 0;
+        let actualizados = 0;
 
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
@@ -377,19 +397,19 @@ export default function ProductosPage() {
             const skuClean = cols[0].toUpperCase();
             const nombreProd = cols[1] || 'Producto Sin Nombre';
             const catProd = (cols[2] || 'GENERAL').toUpperCase();
-            const precioMayor = Number(cols[3]) || 0;
-            const precioFisica = Number(cols[4]) || precioMayor;
-            const precioEcom = Number(cols[5]) || precioFisica;
+            const precioMayor = parseMontoPuro(cols[3]);
+            const precioFisica = parseMontoPuro(cols[4]) || precioMayor;
+            const precioEcom = parseMontoPuro(cols[5]) || precioFisica;
 
             // RECONOCIMIENTO DE IVA
             const ivaIncluText = (cols[6] || 'SI').toUpperCase();
             const aplicaIvaBool = ivaIncluText === 'SI' || ivaIncluText === '1' || ivaIncluText === 'TRUE';
-            const tarifaIvaNum = aplicaIvaBool ? (Number(cols[7]) || 19) : 0;
+            const tarifaIvaNum = aplicaIvaBool ? (parseMontoPuro(cols[7]) || 19) : 0;
 
             // COSTOS DE FABRICACIÓN / COMPRA Y FULFILLMENT
-            const costoImp = Number(cols[8]) || 0;
-            const costoFul = Number(cols[9]) || 0;
-            const stockCant = Number(cols[10]) || 0;
+            const costoImp = parseMontoPuro(cols[8]);
+            const costoFul = parseMontoPuro(cols[9]);
+            const stockCant = parseMontoPuro(cols[10]);
             const sedeNombreInput = cols[11] || '';
 
             let idSedeDestino = idSedeDefecto;
@@ -405,45 +425,97 @@ export default function ProductosPage() {
 
             const { base, iva } = calcularBaseEIVA(precioFisica, tarifaIvaNum, aplicaIvaBool);
 
-            const prodObj = {
-              id_cuenta: userAuth.id_cuenta,
-              sku: skuClean,
-              nombre: nombreProd,
-              categoria: catProd,
-              pmayor: precioMayor,
-              plocal: precioFisica,
-              pecom: precioEcom,
-              precio: precioFisica,
+            // ANALIZAR SI EL SKU YA EXISTE EN FIRESTORE
+            const docRef = doc(db, 'productos', skuClean);
+            const docSnap = await getDoc(docRef);
+            const fechaActualISO = new Date().toISOString();
 
-              aplica_iva: aplicaIvaBool,
-              iva: tarifaIvaNum,
-              base_gravable_estimada: base,
-              iva_monto_estimado: iva,
+            if (docSnap.exists()) {
+              // ACTUALIZAR REGISTRO DUPLICADO A LA ÚLTIMA INFORMACIÓN RECIBIDA
+              const dataExistente = docSnap.data();
+              const stockExistente = dataExistente.stock || {};
+              const historialExistente = Array.isArray(dataExistente.historial_cambios) ? dataExistente.historial_cambios : [];
 
-              costo_importacion: costoImp,
-              costo_fulfilment: costoFul,
-              costo_total: costoImp + costoFul,
-              stock: {
-                [idSedeDestino]: stockCant
-              },
-              historial_cambios: [
-                {
-                  fecha: new Date().toISOString(),
-                  usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
-                  usuario_id: userAuth?.id_usuario || '',
-                  usuario_rol: userAuth?.rol || 'ADMIN',
-                  motivo: `Carga Masiva via CSV con Costos e IVA (${tarifaIvaNum}%)`
-                }
-              ],
-              fecha_actualizacion: new Date().toISOString()
-            };
+              const nuevoStockActualizado = {
+                ...stockExistente,
+                [idSedeDestino]: stockCant // Actualiza o añade el stock para la sede indicada
+              };
 
-            await setDoc(doc(db, 'productos', skuClean), prodObj, { merge: true });
-            importados++;
+              const nuevoCambioActualizacion = {
+                fecha: fechaActualISO,
+                usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
+                usuario_id: userAuth?.id_usuario || '',
+                usuario_rol: userAuth?.rol || 'ADMIN',
+                motivo: `Actualización Masiva via CSV (Valores y Stock en Sede: ${idSedeDestino})`
+              };
+
+              const prodActualizadoObj = {
+                id_cuenta: userAuth.id_cuenta,
+                sku: skuClean,
+                nombre: nombreProd,
+                categoria: catProd,
+                pmayor: precioMayor,
+                plocal: precioFisica,
+                pecom: precioEcom,
+                precio: precioFisica,
+
+                aplica_iva: aplicaIvaBool,
+                iva: tarifaIvaNum,
+                base_gravable_estimada: base,
+                iva_monto_estimado: iva,
+
+                costo_importacion: costoImp,
+                costo_fulfilment: costoFul,
+                costo_total: costoImp + costoFul,
+                stock: nuevoStockActualizado,
+                historial_cambios: [nuevoCambioActualizacion, ...historialExistente],
+                fecha_actualizacion: fechaActualISO
+              };
+
+              await setDoc(docRef, prodActualizadoObj, { merge: true });
+              actualizados++;
+            } else {
+              // CREAR NUEVO REGISTRO DESDE CERO
+              const prodNuevoObj = {
+                id_cuenta: userAuth.id_cuenta,
+                sku: skuClean,
+                nombre: nombreProd,
+                categoria: catProd,
+                pmayor: precioMayor,
+                plocal: precioFisica,
+                pecom: precioEcom,
+                precio: precioFisica,
+
+                aplica_iva: aplicaIvaBool,
+                iva: tarifaIvaNum,
+                base_gravable_estimada: base,
+                iva_monto_estimado: iva,
+
+                costo_importacion: costoImp,
+                costo_fulfilment: costoFul,
+                costo_total: costoImp + costoFul,
+                stock: {
+                  [idSedeDestino]: stockCant
+                },
+                historial_cambios: [
+                  {
+                    fecha: fechaActualISO,
+                    usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
+                    usuario_id: userAuth?.id_usuario || '',
+                    usuario_rol: userAuth?.rol || 'ADMIN',
+                    motivo: `Carga Masiva via CSV (Creación Inicial)`
+                  }
+                ],
+                fecha_actualizacion: fechaActualISO
+              };
+
+              await setDoc(docRef, prodNuevoObj, { merge: true });
+              nuevosCreados++;
+            }
           }
         }
 
-        alert(`¡Carga Masiva Exitosa! Se registraron ${importados} productos con sus costos e IVA.`);
+        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Nuevos Registrados: ${nuevosCreados}\n🔄 Duplicados Actualizados a última versión: ${actualizados}`);
         setFileMasivo(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         setShowModalMasivo(false);
@@ -514,8 +586,9 @@ export default function ProductosPage() {
             onClick={() => setShowModalMasivo(true)}
             className="bg-transparent hover:bg-[#253443] border border-[#6884C5] text-[#6884C5] hover:text-white font-satoshi-black px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 flex items-center gap-2"
           >
+            {/* ÍCONO 2D PLANO: SUBIR / CARGA */}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
             <span>Carga Masiva</span>
           </button>
@@ -525,6 +598,7 @@ export default function ProductosPage() {
             onClick={handleOpenCreate}
             className="bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black px-6 py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-lg shadow-emerald-950/40 flex items-center gap-2 shrink-0"
           >
+            {/* ÍCONO 2D PLANO: MAS / AGREGAR */}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
             </svg>
@@ -535,7 +609,7 @@ export default function ProductosPage() {
 
       {/* METRICAS SUPERIORES */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36">
+        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3">
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
               VALOR COMERCIAL TOTAL
@@ -545,8 +619,8 @@ export default function ProductosPage() {
             </span>
           </div>
 
-          <div className="my-1">
-            <div className="text-[36px] font-black text-white font-satoshi-black leading-tight tracking-tight">
+          <div>
+            <div className="text-3xl font-black text-white font-satoshi-black leading-tight tracking-tight">
               {formatoCOP(valorTotalInventario)}
             </div>
           </div>
@@ -556,7 +630,7 @@ export default function ProductosPage() {
           </p>
         </div>
 
-        <div className={`bg-[#253443] border rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36 transition-colors ${
+        <div className={`bg-[#253443] border rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3 transition-colors ${
           totalBajoStockCount > 0 ? 'border-amber-500/50' : 'border-slate-700/50'
         }`}>
           <div className="flex justify-between items-start">
@@ -568,14 +642,15 @@ export default function ProductosPage() {
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
               totalBajoStockCount > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-[#1D2935] text-slate-500'
             }`}>
+              {/* ÍCONO 2D PLANO: ALERTA */}
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
           </div>
 
-          <div className="my-1">
-            <div className={`text-[36px] font-black font-satoshi-black leading-tight ${
+          <div>
+            <div className={`text-4xl font-black font-satoshi-black leading-tight ${
               totalBajoStockCount > 0 ? 'text-amber-300' : 'text-slate-300'
             }`}>
               {totalBajoStockCount} <span className="text-sm font-satoshi-regular text-[#A0AEC0]">SKUs</span>
@@ -587,7 +662,7 @@ export default function ProductosPage() {
           </p>
         </div>
 
-        <div className={`bg-[#253443] border rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36 transition-colors ${
+        <div className={`bg-[#253443] border rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3 transition-colors ${
           totalInactivos120Count > 0 ? 'border-red-500/50' : 'border-slate-700/50'
         }`}>
           <div className="flex justify-between items-start">
@@ -599,14 +674,15 @@ export default function ProductosPage() {
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
               totalInactivos120Count > 0 ? 'bg-red-500/10 text-red-400' : 'bg-[#1D2935] text-slate-500'
             }`}>
+              {/* ÍCONO 2D PLANO: RELOJ PAUSA */}
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
           </div>
 
-          <div className="my-1">
-            <div className={`text-[36px] font-black font-satoshi-black leading-tight ${
+          <div>
+            <div className={`text-4xl font-black font-satoshi-black leading-tight ${
               totalInactivos120Count > 0 ? 'text-red-400' : 'text-slate-300'
             }`}>
               {totalInactivos120Count} <span className="text-sm font-satoshi-regular text-[#A0AEC0]">SKUs</span>
@@ -624,6 +700,7 @@ export default function ProductosPage() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3 w-full md:w-auto flex-1">
             <div className="relative flex-1 max-w-md">
+              {/* ÍCONO 2D PLANO: BÚSQUEDA */}
               <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
@@ -663,6 +740,7 @@ export default function ProductosPage() {
                   : 'text-[#A0AEC0] hover:text-white'
               }`}
             >
+              {/* ÍCONO 2D PLANO: VISTA TABLA */}
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
@@ -678,6 +756,7 @@ export default function ProductosPage() {
                   : 'text-[#A0AEC0] hover:text-white'
               }`}
             >
+              {/* ÍCONO 2D PLANO: VISTA CUADRÍCULA */}
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
               </svg>
@@ -794,8 +873,9 @@ export default function ProductosPage() {
                           {p.imagen_url ? (
                             <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover" />
                           ) : (
+                            /* ÍCONO 2D PLANO: ETIQUETA / PRODUCTO */
                             <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                             </svg>
                           )}
                         </div>
@@ -849,7 +929,9 @@ export default function ProductosPage() {
                         type="button"
                         onClick={(e) => handleDelete(e, p)}
                         className="p-1.5 text-red-400 hover:bg-red-950/40 rounded-lg transition"
+                        title="Eliminar producto"
                       >
+                        {/* ÍCONO 2D PLANO: TRASH */}
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
@@ -907,8 +989,9 @@ export default function ProductosPage() {
                       {p.imagen_url ? (
                         <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover" />
                       ) : (
+                        /* ÍCONO 2D PLANO: ETIQUETA / PRODUCTO */
                         <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                         </svg>
                       )}
                     </div>
@@ -999,6 +1082,7 @@ export default function ProductosPage() {
                       {imagenUrl ? (
                         <img src={imagenUrl} alt="Vista Previa" className="w-full h-full object-cover" />
                       ) : (
+                        /* ÍCONO 2D PLANO: IMAGEN DEFAULT */
                         <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
@@ -1318,7 +1402,7 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {/* MODAL CARGA MASIVA CON SOPORTE DE COSTOS E IVA */}
+      {/* MODAL CARGA MASIVA CON SOPORTE DE COSTOS E IVA Y ACTUALIZACIÓN INTELIGENTE */}
       {showModalMasivo && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
@@ -1334,13 +1418,16 @@ export default function ProductosPage() {
             <form onSubmit={handleProcesarCargaMasiva} className="space-y-4">
               <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 text-xs text-slate-300 space-y-2">
                 <p className="font-satoshi-black text-white">PASO 1: Descarga la plantilla estructurada</p>
-                <p className="text-[11px] text-[#A0AEC0]">Soporta Sede, Precios, Costos de Fabricación/Fulfillment e IVA.</p>
+                <p className="text-[11px] text-[#A0AEC0]">Soporta Sede, Precios, Costos e IVA. Si un SKU ya existe, actualizará automáticamente sus valores e inventario.</p>
                 <button 
                   type="button"
                   onClick={handleDescargarPlantillaProductos}
-                  className="bg-[#6884C5] text-white font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase shadow hover:bg-[#5772b0] transition"
+                  className="bg-[#6884C5] text-white font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase shadow hover:bg-[#5772b0] transition flex items-center gap-1.5"
                 >
-                  📥 Descargar Plantilla CSV
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>Descargar Plantilla CSV</span>
                 </button>
               </div>
 
@@ -1367,7 +1454,7 @@ export default function ProductosPage() {
                 <button 
                   type="submit" 
                   disabled={loadingMasivo || !fileMasivo}
-                  className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50"
+                  className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loadingMasivo ? 'Importando...' : '⚡ Procesar e Indexar'}
                 </button>
