@@ -399,7 +399,7 @@ export default function VentasPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-700/60 pb-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight font-satoshi-black">
-            Terminal de Ventas POS
+            Registro de Ventas
           </h1>
           <p className="text-xs text-[#A0AEC0] mt-0.5 font-satoshi-regular">
             {esVendedor 
@@ -416,9 +416,8 @@ export default function VentasPage() {
               activeTab === 'POS' ? 'bg-[#0DE8C0] text-[#1D2935] shadow-md' : 'text-[#A0AEC0] hover:text-white'
             }`}
           >
-            {/* ÍCONO 2D LÍNEA FINA */}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 00-4z" />
             </svg>
             <span>Caja Registrar (POS)</span>
           </button>
@@ -430,7 +429,6 @@ export default function VentasPage() {
               activeTab === 'HISTORIAL' ? 'bg-[#0DE8C0] text-[#1D2935] shadow-md' : 'text-[#A0AEC0] hover:text-white'
             }`}
           >
-            {/* ÍCONO 2D LÍNEA FINA */}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 01-2-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
@@ -448,7 +446,6 @@ export default function VentasPage() {
             
             <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-3 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="relative flex-1 w-full">
-                {/* ÍCONO 2D LÍNEA FINA */}
                 <svg className="w-5 h-5 text-[#0DE8C0] absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
@@ -493,7 +490,6 @@ export default function VentasPage() {
                         {prod.imagen_url ? (
                           <img src={prod.imagen_url} alt={prod.nombre} className="w-full h-full object-cover group-hover:scale-105 transition" />
                         ) : (
-                          /* ÍCONO 2D LÍNEA FINA */
                           <svg className="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
@@ -533,7 +529,6 @@ export default function VentasPage() {
             <div className="bg-[#253443] border-2 border-[#0DE8C0]/50 rounded-2xl p-3.5 shadow-lg flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 truncate">
                 <div className="w-8 h-8 rounded-lg bg-[#0DE8C0]/10 flex items-center justify-center text-[#0DE8C0] shrink-0">
-                  {/* ÍCONO 2D LÍNEA FINA */}
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
@@ -780,7 +775,6 @@ export default function VentasPage() {
                     <span>Procesando Venta...</span>
                   ) : (
                     <>
-                      {/* ÍCONO 2D LÍNEA FINA */}
                       <svg className="w-5 h-5 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
@@ -801,7 +795,6 @@ export default function VentasPage() {
         <div className="space-y-4">
           <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-3 shadow-lg flex flex-col md:flex-row items-center justify-between gap-3">
             <div className="relative w-full md:w-80">
-              {/* ÍCONO 2D LÍNEA FINA */}
               <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
@@ -955,9 +948,8 @@ export default function VentasPage() {
               onClick={() => window.print()}
               className="w-full bg-[#0DE8C0] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase shadow flex items-center justify-center gap-2"
             >
-              {/* ÍCONO 2D LÍNEA FINA */}
               <svg className="w-4 h-4 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
               <span>Imprimir Comprobante PDF</span>
             </button>
