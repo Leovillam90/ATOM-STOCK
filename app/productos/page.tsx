@@ -30,6 +30,10 @@ export default function ProductosPage() {
   const [plocal, setPlocal] = useState<number | ''>('');
   const [pecom, setPecom] = useState<number | ''>('');
 
+  // CONFIGURACIÓN DE IVA EN EL PRODUCTO (PRECIO FINAL FIJO)
+  const [aplicaIva, setAplicaIva] = useState<boolean>(true);
+  const [tarifaIva, setTarifaIva] = useState<number>(19);
+
   const [costoImportacion, setCostoImportacion] = useState<number | ''>('');
   const [costoFulfilment, setCostoFulfilment] = useState<number | ''>('');
   const [imagenUrl, setImagenUrl] = useState('');
@@ -141,12 +145,10 @@ export default function ProductosPage() {
   const obtenerSedesAutorizadasUsuario = () => {
     if (!userAuth) return [];
 
-    // Si es Administrador General, tiene permiso sobre todas las sedes activas
     if (userAuth.rol === 'ADMIN') {
       return sucursales.filter(s => s.estado !== 'INACTIVA');
     }
 
-    // Obtener arreglo de sedes asignadas al usuario
     let sedesUserIds: string[] = [];
     if (Array.isArray(userAuth.sedes_asignadas) && userAuth.sedes_asignadas.length > 0) {
       sedesUserIds = userAuth.sedes_asignadas;
@@ -165,11 +167,12 @@ export default function ProductosPage() {
     setPmayor('');
     setPlocal('');
     setPecom('');
+    setAplicaIva(true);
+    setTarifaIva(19);
     setCostoImportacion('');
     setCostoFulfilment('');
     setImagenUrl('');
 
-    // Asignación de mapa de stock sólo en las sedes autorizadas para este usuario
     const sedesPermitidas = obtenerSedesAutorizadasUsuario();
     const initialStockMap: { [key: string]: number } = {};
     sedesPermitidas.forEach(s => {
@@ -192,6 +195,9 @@ export default function ProductosPage() {
     setPmayor(p.pmayor !== undefined ? p.pmayor : '');
     setPlocal(p.plocal !== undefined ? p.plocal : (p.precio !== undefined ? p.precio : ''));
     setPecom(p.pecom !== undefined ? p.pecom : '');
+
+    setAplicaIva(p.aplica_iva !== undefined ? p.aplica_iva : true);
+    setTarifaIva(p.iva !== undefined ? Number(p.iva) : 19);
     
     setCostoImportacion(p.costo_importacion !== undefined ? p.costo_importacion : '');
     setCostoFulfilment(p.costo_fulfilment !== undefined ? p.costo_fulfilment : '');
@@ -212,6 +218,16 @@ export default function ProductosPage() {
     }));
   };
 
+  // CÁLCULO DE DESGLOSE DE IVA
+  const calcularBaseEIVA = (precioFinal: number, tarifa: number, incluye: boolean) => {
+    if (!incluye || tarifa <= 0) {
+      return { base: precioFinal, iva: 0 };
+    }
+    const base = precioFinal / (1 + (tarifa / 100));
+    const iva = precioFinal - base;
+    return { base, iva };
+  };
+
   // GUARDAR O ACTUALIZAR PRODUCTO
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -228,6 +244,10 @@ export default function ProductosPage() {
       const skuClean = skuInput.trim().toUpperCase();
       const fechaActualISO = new Date().toISOString();
 
+      const precioDefinido = Number(plocal) || Number(pecom) || Number(pmayor) || 0;
+      const tarifaAplicada = aplicaIva ? Number(tarifaIva) : 0;
+      const { base, iva } = calcularBaseEIVA(precioDefinido, tarifaAplicada, aplicaIva);
+
       const nuevoCambioAuditoria = editingSku ? {
         fecha: fechaActualISO,
         usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
@@ -237,7 +257,8 @@ export default function ProductosPage() {
         nombre_producto: nombre.trim(),
         precio_mayor: Number(pmayor) || 0,
         precio_pos: Number(plocal) || 0,
-        precio_ecom: Number(pecom) || 0
+        precio_ecom: Number(pecom) || 0,
+        iva_porcentaje: tarifaAplicada
       } : null;
 
       const historialActualizado = editingSku 
@@ -260,7 +281,13 @@ export default function ProductosPage() {
         pmayor: Number(pmayor) || 0,
         plocal: Number(plocal) || 0,
         pecom: Number(pecom) || 0,
-        precio: Number(plocal) || Number(pecom) || Number(pmayor) || 0,
+        precio: precioDefinido, // El cliente fija este precio como el total final
+
+        // IVA Y BASE GRAVABLE CALCULADA DE FORMA INVERSA
+        aplica_iva: aplicaIva,
+        iva: tarifaAplicada,
+        base_gravable_estimada: base,
+        iva_monto_estimado: iva,
 
         costo_importacion: Number(costoImportacion) || 0,
         costo_fulfilment: Number(costoFulfilment) || 0,
@@ -273,7 +300,7 @@ export default function ProductosPage() {
 
       await setDoc(doc(db, 'productos', skuClean), prodObj, { merge: true });
       setShowModal(false);
-      alert(editingSku ? '¡Producto y justificación actualizados en Firestore!' : '¡Producto creado exitosamente!');
+      alert(editingSku ? '¡Producto e IVA actualizados con éxito!' : '¡Producto registrado con éxito!');
     } catch (err: any) {
       console.error(err);
       alert('Error al guardar el producto en Firestore: ' + err.message);
@@ -294,26 +321,27 @@ export default function ProductosPage() {
     }
   };
 
-  // DESCARGAR PLANTILLA CSV
+  // DESCARGAR PLANTILLA CSV INCLUYENDO COLUMNAS DE IVA
   const handleDescargarPlantillaProductos = () => {
     const bom = '\uFEFF';
     const csvContent = 
       'SEP=;\n' +
-      'sku;nombre;categoria;precio_al_por_mayor;precio_tienda_fisica;precio_ecommerce;costo_importacion;costo_fulfilment;stock_total;sede\n' +
-      'PROD-101;Juego de Cubiertos 24pz;HOGAR;85000;129000;119000;45000;8000;50;Sede Principal\n' +
-      'PROD-102;Termo Digital Temperatura;TECNOLOGIA;38000;64990;59900;18000;5000;30;Bodega Norte\n';
+      'sku;nombre;categoria;precio_al_por_mayor;precio_tienda_fisica;precio_ecommerce;iva_incluido;iva_porcentaje;costo_importacion;costo_fulfilment;stock_total;sede\n' +
+      'PROD-101;Juego de Cubiertos 24pz;HOGAR;85000;129000;119000;SI;19;45000;8000;50;Sede Principal\n' +
+      'PROD-102;Termo Digital Temperatura;TECNOLOGIA;38000;64990;59900;SI;19;18000;5000;30;Bodega Norte\n' +
+      'PROD-103;Arroz Especial 1kg;ALIMENTOS;3500;4500;4200;NO;0;2000;500;100;Sede Principal\n';
 
     const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'Plantilla_Multibodega_Productos_ATOM.csv');
+    link.setAttribute('download', 'Plantilla_Multibodega_Productos_ATOM_IVA.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CSV RECONOCIENDO 'SEDE'
+  // PROCESAR CARGA MASIVA CSV CON IVA
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV o Excel.');
@@ -347,10 +375,16 @@ export default function ProductosPage() {
             const precioMayor = Number(cols[3]) || 0;
             const precioFisica = Number(cols[4]) || precioMayor;
             const precioEcom = Number(cols[5]) || precioFisica;
-            const costoImp = Number(cols[6]) || 0;
-            const costoFul = Number(cols[7]) || 0;
-            const stockCant = Number(cols[8]) || 0;
-            const sedeNombreInput = cols[9] || '';
+
+            // RECONOCIMIENTO DE IVA
+            const ivaIncluText = (cols[6] || 'SI').toUpperCase();
+            const aplicaIvaBool = ivaIncluText === 'SI' || ivaIncluText === '1' || ivaIncluText === 'TRUE';
+            const tarifaIvaNum = aplicaIvaBool ? (Number(cols[7]) || 19) : 0;
+
+            const costoImp = Number(cols[8]) || 0;
+            const costoFul = Number(cols[9]) || 0;
+            const stockCant = Number(cols[10]) || 0;
+            const sedeNombreInput = cols[11] || '';
 
             let idSedeDestino = idSedeDefecto;
             if (sedeNombreInput) {
@@ -363,6 +397,8 @@ export default function ProductosPage() {
               }
             }
 
+            const { base, iva } = calcularBaseEIVA(precioFisica, tarifaIvaNum, aplicaIvaBool);
+
             const prodObj = {
               id_cuenta: userAuth.id_cuenta,
               sku: skuClean,
@@ -372,6 +408,12 @@ export default function ProductosPage() {
               plocal: precioFisica,
               pecom: precioEcom,
               precio: precioFisica,
+
+              aplica_iva: aplicaIvaBool,
+              iva: tarifaIvaNum,
+              base_gravable_estimada: base,
+              iva_monto_estimado: iva,
+
               costo_importacion: costoImp,
               costo_fulfilment: costoFul,
               costo_total: costoImp + costoFul,
@@ -384,7 +426,7 @@ export default function ProductosPage() {
                   usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
                   usuario_id: userAuth?.id_usuario || '',
                   usuario_rol: userAuth?.rol || 'ADMIN',
-                  motivo: `Carga Masiva via CSV (Sede: ${idSedeDestino})`
+                  motivo: `Carga Masiva via CSV con IVA (${tarifaIvaNum}%)`
                 }
               ],
               fecha_actualizacion: new Date().toISOString()
@@ -395,7 +437,7 @@ export default function ProductosPage() {
           }
         }
 
-        alert(`¡Carga Masiva Exitosa! Se registraron ${importados} productos asignados a sus sedes correspondientes.`);
+        alert(`¡Carga Masiva Exitosa! Se registraron ${importados} productos ajustados con sus tarifas de IVA.`);
         setFileMasivo(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         setShowModalMasivo(false);
@@ -433,8 +475,12 @@ export default function ProductosPage() {
   const totalInactivos120Count = productos.filter(p => obtenerDiasSinMovimiento(p.sku) >= 120).length;
   const valorTotalInventario = productos.reduce((acc, p) => acc + (obtenerStockTotalProducto(p) * (p.plocal || p.precio || 0)), 0);
 
-  // SEDES AUTORIZADAS EXCLUSIVAS PARA ESTE USUARIO EN EL FORMULARIO
   const sedesFormulario = obtenerSedesAutorizadasUsuario();
+
+  // Valores calculados en el formulario activo
+  const precioReferenciaForm = Number(plocal) || Number(pecom) || Number(pmayor) || 0;
+  const tarifaCalculoForm = aplicaIva ? Number(tarifaIva) : 0;
+  const desgloseForm = calcularBaseEIVA(precioReferenciaForm, tarifaCalculoForm, aplicaIva);
 
   return (
     <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">
@@ -445,14 +491,14 @@ export default function ProductosPage() {
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2 h-2 rounded-full bg-[#0DE8C0] animate-pulse"></span>
             <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
-              Catálogo Multibodega & Estructura de 3 Precios
+              Catálogo Multibodega & Estructura de Precios con IVA
             </span>
           </div>
           <h1 className="text-3xl font-black text-white tracking-tight font-satoshi-black">
             Consolidado de Productos
           </h1>
           <p className="text-xs text-[#A0AEC0] mt-1 font-satoshi-regular max-w-xl">
-            Administración de Precios al por Mayor, Tienda Física y E-Commerce con auditoría e historial de cambios.
+            Administración de precios finales, desgloses de IVA ajustados automáticamente y control multibodega.
           </p>
         </div>
 
@@ -489,7 +535,7 @@ export default function ProductosPage() {
               VALOR COMERCIAL TOTAL
             </span>
             <span className="bg-[#1D2935] border border-[#0DE8C0]/40 text-[#0DE8C0] text-[10px] font-satoshi-black px-2.5 py-0.5 rounded-full uppercase">
-              {productos.length} {productos.length === 1 ? 'Producto Registrado' : 'Productos Registrados'}
+              {productos.length} {productos.length === 1 ? 'Producto' : 'Productos'}
             </span>
           </div>
 
@@ -500,7 +546,7 @@ export default function ProductosPage() {
           </div>
 
           <p className="text-xs text-[#A0AEC0] font-satoshi-regular truncate">
-            Valoración basada en precios de tienda física
+            Valoración final con impuestos incluidos
           </p>
         </div>
 
@@ -565,10 +611,9 @@ export default function ProductosPage() {
             Sin movimiento registrado hace más de 4 meses
           </p>
         </div>
-
       </div>
 
-      {/* BARRA DE FILTROS LIMPIA */}
+      {/* BARRA DE FILTROS */}
       <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-4 mb-8 space-y-4">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3 w-full md:w-auto flex-1">
@@ -715,21 +760,21 @@ export default function ProductosPage() {
                 <th className="p-4">Producto / SKU</th>
                 <th className="p-4">Categoría</th>
                 <th className="p-4 text-center">Stock Total</th>
-                <th className="p-4 text-right">Por Mayor</th>
-                <th className="p-4 text-right">Tienda Física</th>
-                <th className="p-4 text-right">E-Commerce</th>
-                <th className="p-4 text-right">Costos Unitarios</th>
-                <th className="p-4 text-center">Margen Neto</th>
+                <th className="p-4 text-right">Precio Final POS</th>
+                <th className="p-4 text-center">Tarifa IVA</th>
+                <th className="p-4 text-right">Base Gravable</th>
+                <th className="p-4 text-right">Monto IVA</th>
                 <th className="p-4 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/60 text-xs font-satoshi-regular">
               {productosFiltrados.map((p, idx) => {
                 const stockTot = obtenerStockTotalProducto(p, bodegaFiltro);
-                const cImp = Number(p.costo_importacion) || 0;
-                const cFul = Number(p.costo_fulfilment) || 0;
-                const costoTotalUnitario = cImp + cFul;
-                const margenUnitarioNeto = (p.plocal || p.precio || 0) - costoTotalUnitario;
+                const precioFinal = p.plocal || p.precio || 0;
+                const tarifaIva = p.iva !== undefined ? Number(p.iva) : 19;
+                const tieneIva = p.aplica_iva !== undefined ? p.aplica_iva : true;
+                
+                const { base, iva } = calcularBaseEIVA(precioFinal, tieneIva ? tarifaIva : 0, tieneIva);
 
                 return (
                   <tr 
@@ -771,31 +816,26 @@ export default function ProductosPage() {
                       </span>
                     </td>
 
-                    <td className="p-4 text-right font-satoshi-black text-[#0DE8C0]">
-                      {formatoCOP(p.pmayor || 0)}
-                    </td>
-
                     <td className="p-4 text-right font-satoshi-black text-white">
-                      {formatoCOP(p.plocal || p.precio || 0)}
-                    </td>
-
-                    <td className="p-4 text-right font-satoshi-black text-[#6884C5]">
-                      {formatoCOP(p.pecom || 0)}
-                    </td>
-
-                    <td className="p-4 text-right font-satoshi-regular text-[#A0AEC0]">
-                      <div>Imp: <span className="text-white font-mono">{formatoCOP(cImp)}</span></div>
-                      <div>Ful: <span className="text-white font-mono">{formatoCOP(cFul)}</span></div>
+                      {formatoCOP(precioFinal)}
                     </td>
 
                     <td className="p-4 text-center">
-                      <span className={`px-3 py-1 rounded-full font-satoshi-black text-[11px] ${
-                        margenUnitarioNeto >= 0
-                          ? 'bg-[#0DE8C0]/15 text-[#0DE8C0] border border-[#0DE8C0]/30'
-                          : 'bg-red-950/80 text-red-400 border border-red-800/40'
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-satoshi-black ${
+                        tieneIva && tarifaIva > 0
+                          ? 'bg-[#0DE8C0]/10 text-[#0DE8C0] border border-[#0DE8C0]/30'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
                       }`}>
-                        {formatoCOP(margenUnitarioNeto)}
+                        {tieneIva ? `${tarifaIva}% IVA` : '0% (Exento)'}
                       </span>
+                    </td>
+
+                    <td className="p-4 text-right font-mono text-slate-300">
+                      {formatoCOP(base)}
+                    </td>
+
+                    <td className="p-4 text-right font-mono text-[#0DE8C0]">
+                      {formatoCOP(iva)}
                     </td>
 
                     <td className="p-4 text-center">
@@ -815,7 +855,7 @@ export default function ProductosPage() {
 
               {productosFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="p-12 text-center text-[#A0AEC0] text-xs">
+                  <td colSpan={8} className="p-12 text-center text-[#A0AEC0] text-xs">
                     No se encontraron productos registrados.
                   </td>
                 </tr>
@@ -830,10 +870,10 @@ export default function ProductosPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {productosFiltrados.map((p, idx) => {
             const stockTot = obtenerStockTotalProducto(p, bodegaFiltro);
-            const cImp = Number(p.costo_importacion) || 0;
-            const cFul = Number(p.costo_fulfilment) || 0;
-            const costoTotalUnitario = cImp + cFul;
-            const margenUnitarioNeto = (p.plocal || p.precio || 0) - costoTotalUnitario;
+            const precioFinal = p.plocal || p.precio || 0;
+            const tarifaIva = p.iva !== undefined ? Number(p.iva) : 19;
+            const tieneIva = p.aplica_iva !== undefined ? p.aplica_iva : true;
+            const { base, iva } = calcularBaseEIVA(precioFinal, tieneIva ? tarifaIva : 0, tieneIva);
 
             return (
               <div
@@ -877,37 +917,16 @@ export default function ProductosPage() {
                   </div>
 
                   <div className="bg-[#1D2935] p-3 rounded-xl border border-slate-700/80 space-y-2 text-xs">
-                    <div className="grid grid-cols-3 gap-2 border-b border-slate-700/60 pb-2">
-                      <div>
-                        <span className="text-[9px] text-[#0DE8C0] font-satoshi-black uppercase block">Por Mayor</span>
-                        <span className="font-satoshi-black text-white">{formatoCOP(p.pmayor || 0)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-[#A0AEC0] font-satoshi-black uppercase block">Tienda POS</span>
-                        <span className="font-satoshi-black text-white">{formatoCOP(p.plocal || p.precio || 0)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] text-[#6884C5] font-satoshi-black uppercase block">E-Commerce</span>
-                        <span className="font-satoshi-black text-white">{formatoCOP(p.pecom || 0)}</span>
-                      </div>
+                    <div className="flex justify-between items-center border-b border-slate-700/60 pb-1.5">
+                      <span className="text-[10px] text-[#A0AEC0] uppercase font-satoshi-black">Precio Final Venta:</span>
+                      <span className="font-satoshi-black text-white text-sm">{formatoCOP(precioFinal)}</span>
                     </div>
 
-                    <div className="pt-1 grid grid-cols-2 gap-2 text-[10px] text-[#A0AEC0]">
-                      <div>Costo Import/Fab: <span className="font-mono text-slate-200">{formatoCOP(cImp)}</span></div>
-                      <div>Costo Fulfilment: <span className="font-mono text-slate-200">{formatoCOP(cFul)}</span></div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div>Base Gravable: <span className="font-mono text-slate-200 block">{formatoCOP(base)}</span></div>
+                      <div>IVA Discriminado ({tarifaIva}%): <span className="font-mono text-[#0DE8C0] block">{formatoCOP(iva)}</span></div>
                     </div>
                   </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-700/60 flex items-center justify-between">
-                  <span className="text-[10px] text-[#A0AEC0] font-satoshi-regular">Margen Neto Est:</span>
-                  <span className={`px-3 py-1 rounded-full font-satoshi-black text-xs ${
-                    margenUnitarioNeto >= 0
-                      ? 'bg-[#0DE8C0]/15 text-[#0DE8C0] border border-[#0DE8C0]/30'
-                      : 'bg-red-950/80 text-red-400 border border-red-800/40'
-                  }`}>
-                    {formatoCOP(margenUnitarioNeto)}
-                  </span>
                 </div>
               </div>
             );
@@ -915,17 +934,15 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {/* MODAL CREAR / EDITAR PRODUCTO CON RESTRICCIÓN DE BODEGAS ASIGNADAS */}
+      {/* MODAL CREAR / EDITAR PRODUCTO CON SELECCIÓN DE IVA */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl font-sans max-h-[90vh] overflow-y-auto">
             
             <div className="flex justify-between items-center mb-4 border-b border-slate-700/60 pb-3">
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-satoshi-black text-white uppercase tracking-wide">
-                  {editingSku ? `Editar SKU: ${editingSku}` : 'Nuevo Producto'}
-                </h3>
-              </div>
+              <h3 className="text-lg font-satoshi-black text-white uppercase tracking-wide">
+                {editingSku ? `Editar SKU: ${editingSku}` : 'Nuevo Producto'}
+              </h3>
 
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white transition">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -961,7 +978,7 @@ export default function ProductosPage() {
               </div>
             )}
 
-            {/* VISTA 1: FORMULARIO DE DATOS */}
+            {/* FORMULARIO DE DATOS */}
             {activeModalTab === 'DATOS' && (
               <form onSubmit={handleSave} className="space-y-4">
                 
@@ -1048,7 +1065,7 @@ export default function ProductosPage() {
                   />
                 </div>
 
-                {/* SECCIÓN ASIGNACIÓN DE INVENTARIO (SÓLO SEDES AUTORIZADAS PARA EL USUARIO LOGUEADO) */}
+                {/* ASIGNACIÓN DE INVENTARIO */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <div className="flex justify-between items-center">
                     <label className="block text-xs font-satoshi-black text-[#0DE8C0] uppercase">
@@ -1078,17 +1095,13 @@ export default function ProductosPage() {
                         </div>
                       </div>
                     ))}
-
-                    {sedesFormulario.length === 0 && (
-                      <p className="text-[11px] text-amber-400/90 italic">No tienes sedes asignadas para modificar el inventario.</p>
-                    )}
                   </div>
                 </div>
 
-                {/* ESTRUCTURA DE 3 PRECIOS */}
+                {/* ESTRUCTURA DE PRECIOS */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <label className="block text-xs font-satoshi-black text-[#0DE8C0] uppercase">
-                    🏷️ Estructura de Precios
+                    🏷️ Estructura de Precios Finales (Cliente)
                   </label>
 
                   <div className="grid grid-cols-3 gap-2">
@@ -1104,7 +1117,7 @@ export default function ProductosPage() {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-satoshi-black text-white mb-1 uppercase">Tienda Física ($)</label>
+                      <label className="block text-[10px] font-satoshi-black text-white mb-1 uppercase">Tienda POS ($)</label>
                       <input 
                         type="number"
                         className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
@@ -1127,38 +1140,64 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
-                {/* UNIT ECONOMICS */}
+                {/* MÓDULO DE CONFIGURACIÓN DE IVA */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
-                  <label className="block text-xs font-satoshi-black text-[#0DE8C0] uppercase">
-                    💰 Unit Economics (Costos Unitarios)
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase">
+                      🏛️ Impuesto al Valor Agregado (IVA)
+                    </label>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] mb-1 uppercase">Costo Import/Fab ($)</label>
-                      <input 
-                        type="number"
-                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
-                        placeholder="45000"
-                        value={costoImportacion}
-                        onChange={(e) => setCostoImportacion(e.target.value ? Number(e.target.value) : '')}
+                    <div className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        id="checkAplicaIva"
+                        checked={aplicaIva}
+                        onChange={(e) => setAplicaIva(e.target.checked)}
+                        className="rounded bg-[#253443] border-slate-700 text-[#0DE8C0] focus:ring-0 w-4 h-4 cursor-pointer"
                       />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] mb-1 uppercase">Costo Fulfilment ($)</label>
-                      <input 
-                        type="number"
-                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
-                        placeholder="8000"
-                        value={costoFulfilment}
-                        onChange={(e) => setCostoFulfilment(e.target.value ? Number(e.target.value) : '')}
-                      />
+                      <label htmlFor="checkAplicaIva" className="text-xs font-satoshi-black text-slate-200 cursor-pointer">
+                        ¿Precio Incluye IVA?
+                      </label>
                     </div>
                   </div>
+
+                  {aplicaIva && (
+                    <div className="space-y-3 pt-2">
+                      <div>
+                        <label className="block text-[10px] font-satoshi-black text-slate-300 uppercase mb-1">
+                          Tarifa de IVA Aplicable
+                        </label>
+                        <select
+                          className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-satoshi-black focus:outline-none"
+                          value={tarifaIva}
+                          onChange={(e) => setTarifaIva(Number(e.target.value))}
+                        >
+                          <option value={19}>IVA 19% (Tarifa General)</option>
+                          <option value={5}>IVA 5% (Tarifa Reducida)</option>
+                          <option value={0}>IVA 0% (Exento / Excluido)</option>
+                        </select>
+                      </div>
+
+                      {/* DESGLOSE EN TIEMPO REAL */}
+                      <div className="bg-[#253443] p-3 rounded-lg border border-slate-700/80 space-y-1 text-xs">
+                        <div className="flex justify-between text-slate-400">
+                          <span>Precio Final Definido:</span>
+                          <span className="font-satoshi-black text-white">{formatoCOP(precioReferenciaForm)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-400">
+                          <span>Base Gravable Ajustada:</span>
+                          <span className="font-mono text-slate-200">{formatoCOP(desgloseForm.base)}</span>
+                        </div>
+                        <div className="flex justify-between text-[#0DE8C0] font-satoshi-black pt-1 border-t border-slate-700">
+                          <span>IVA Discriminado ({tarifaIva}%):</span>
+                          <span>{formatoCOP(desgloseForm.iva)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* CAMPO DE JUSTIFICACIÓN / MOTIVO DEL CAMBIO */}
+                {/* JUSTIFICACIÓN / MOTIVO DE LA EDICIÓN */}
                 {editingSku && (
                   <div className="bg-[#1D2935] border border-[#C81FDA]/60 p-4 rounded-xl space-y-2">
                     <label className="block text-xs font-satoshi-black text-[#C81FDA] uppercase flex items-center gap-1.5">
@@ -1167,7 +1206,7 @@ export default function ProductosPage() {
                     <textarea
                       rows={2}
                       className="w-full bg-[#253443] border border-slate-700 focus:border-[#C81FDA] rounded-xl p-2.5 text-xs text-white placeholder-[#A0AEC0] focus:outline-none font-satoshi-regular"
-                      placeholder="Ej: Ajuste de precios por costo de dólar / Reubicación de stock en Sede Principal..."
+                      placeholder="Ej: Ajuste de precio final / Cambio de tarifa de IVA..."
                       value={motivoEdicion}
                       onChange={(e) => setMotivoEdicion(e.target.value)}
                       required
@@ -1194,11 +1233,11 @@ export default function ProductosPage() {
               </form>
             )}
 
-            {/* VISTA 2: HISTORIAL DE AUDITORÍA Y CAMBIOS REGISTRADOS */}
+            {/* VISTA HISTORIAL */}
             {activeModalTab === 'HISTORIAL' && (
               <div className="space-y-3 py-2">
                 <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
-                  Registro cronológico de quién ha modificado este producto y el motivo justificado:
+                  Registro cronológico de quién ha modificado este producto:
                 </p>
 
                 <div className="max-h-80 overflow-y-auto space-y-2.5 pr-1">
@@ -1218,12 +1257,6 @@ export default function ProductosPage() {
                       </p>
                     </div>
                   ))}
-
-                  {historialCambios.length === 0 && (
-                    <div className="text-center py-12 text-[#A0AEC0] text-xs font-satoshi-regular">
-                      No hay registros anteriores de auditoría para este producto.
-                    </div>
-                  )}
                 </div>
 
                 <div className="pt-3 border-t border-slate-700/60">
@@ -1242,7 +1275,7 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {/* MODAL CARGA MASIVA */}
+      {/* MODAL CARGA MASIVA CON SOPORTE DE IVA */}
       {showModalMasivo && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
@@ -1257,14 +1290,14 @@ export default function ProductosPage() {
 
             <form onSubmit={handleProcesarCargaMasiva} className="space-y-4">
               <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 text-xs text-slate-300 space-y-2">
-                <p className="font-satoshi-black text-white">PASO 1: Descarga la plantilla con columna de Sede</p>
-                <p className="text-[11px] text-[#A0AEC0]">Permite especificar el destino del stock en cada bodega.</p>
+                <p className="font-satoshi-black text-white">PASO 1: Descarga la plantilla estructurada</p>
+                <p className="text-[11px] text-[#A0AEC0]">Soporta Sede, Precios e IVA (`iva_incluido` e `iva_porcentaje`).</p>
                 <button 
                   type="button"
                   onClick={handleDescargarPlantillaProductos}
                   className="bg-[#6884C5] text-white font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase shadow hover:bg-[#5772b0] transition"
                 >
-                  📥 Descargar Plantilla Multibodega CSV
+                  📥 Descargar Plantilla CSV con IVA
                 </button>
               </div>
 
