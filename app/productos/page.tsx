@@ -34,6 +34,7 @@ export default function ProductosPage() {
   const [aplicaIva, setAplicaIva] = useState<boolean>(true);
   const [tarifaIva, setTarifaIva] = useState<number>(19);
 
+  // COSTOS UNITARIOS (UNIT ECONOMICS)
   const [costoImportacion, setCostoImportacion] = useState<number | ''>('');
   const [costoFulfilment, setCostoFulfilment] = useState<number | ''>('');
   const [imagenUrl, setImagenUrl] = useState('');
@@ -258,6 +259,8 @@ export default function ProductosPage() {
         precio_mayor: Number(pmayor) || 0,
         precio_pos: Number(plocal) || 0,
         precio_ecom: Number(pecom) || 0,
+        costo_importacion: Number(costoImportacion) || 0,
+        costo_fulfilment: Number(costoFulfilment) || 0,
         iva_porcentaje: tarifaAplicada
       } : null;
 
@@ -281,7 +284,7 @@ export default function ProductosPage() {
         pmayor: Number(pmayor) || 0,
         plocal: Number(plocal) || 0,
         pecom: Number(pecom) || 0,
-        precio: precioDefinido, // El cliente fija este precio como el total final
+        precio: precioDefinido,
 
         // IVA Y BASE GRAVABLE CALCULADA DE FORMA INVERSA
         aplica_iva: aplicaIva,
@@ -289,9 +292,11 @@ export default function ProductosPage() {
         base_gravable_estimada: base,
         iva_monto_estimado: iva,
 
+        // COSTOS UNITARIOS
         costo_importacion: Number(costoImportacion) || 0,
         costo_fulfilment: Number(costoFulfilment) || 0,
         costo_total: (Number(costoImportacion) || 0) + (Number(costoFulfilment) || 0),
+
         imagen_url: imagenUrl.trim(),
         stock: stockMap,
         historial_cambios: historialActualizado,
@@ -321,12 +326,12 @@ export default function ProductosPage() {
     }
   };
 
-  // DESCARGAR PLANTILLA CSV INCLUYENDO COLUMNAS DE IVA
+  // DESCARGAR PLANTILLA CSV INCLUYENDO COLUMNAS DE COSTOS DE FABRICACIÓN/COMPRA Y FULFILLMENT
   const handleDescargarPlantillaProductos = () => {
     const bom = '\uFEFF';
     const csvContent = 
       'SEP=;\n' +
-      'sku;nombre;categoria;precio_al_por_mayor;precio_tienda_fisica;precio_ecommerce;iva_incluido;iva_porcentaje;costo_importacion;costo_fulfilment;stock_total;sede\n' +
+      'sku;nombre;categoria;precio_al_por_mayor;precio_tienda_fisica;precio_ecommerce;iva_incluido;iva_porcentaje;costo_importacion_o_fabricacion;costo_fulfilment;stock_total;sede\n' +
       'PROD-101;Juego de Cubiertos 24pz;HOGAR;85000;129000;119000;SI;19;45000;8000;50;Sede Principal\n' +
       'PROD-102;Termo Digital Temperatura;TECNOLOGIA;38000;64990;59900;SI;19;18000;5000;30;Bodega Norte\n' +
       'PROD-103;Arroz Especial 1kg;ALIMENTOS;3500;4500;4200;NO;0;2000;500;100;Sede Principal\n';
@@ -335,13 +340,13 @@ export default function ProductosPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'Plantilla_Multibodega_Productos_ATOM_IVA.csv');
+    link.setAttribute('download', 'Plantilla_Multibodega_Productos_ATOM_Costos_IVA.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CSV CON IVA
+  // PROCESAR CARGA MASIVA CSV CON COSTOS E IVA
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV o Excel.');
@@ -381,6 +386,7 @@ export default function ProductosPage() {
             const aplicaIvaBool = ivaIncluText === 'SI' || ivaIncluText === '1' || ivaIncluText === 'TRUE';
             const tarifaIvaNum = aplicaIvaBool ? (Number(cols[7]) || 19) : 0;
 
+            // COSTOS DE FABRICACIÓN / COMPRA Y FULFILLMENT
             const costoImp = Number(cols[8]) || 0;
             const costoFul = Number(cols[9]) || 0;
             const stockCant = Number(cols[10]) || 0;
@@ -426,7 +432,7 @@ export default function ProductosPage() {
                   usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
                   usuario_id: userAuth?.id_usuario || '',
                   usuario_rol: userAuth?.rol || 'ADMIN',
-                  motivo: `Carga Masiva via CSV con IVA (${tarifaIvaNum}%)`
+                  motivo: `Carga Masiva via CSV con Costos e IVA (${tarifaIvaNum}%)`
                 }
               ],
               fecha_actualizacion: new Date().toISOString()
@@ -437,7 +443,7 @@ export default function ProductosPage() {
           }
         }
 
-        alert(`¡Carga Masiva Exitosa! Se registraron ${importados} productos ajustados con sus tarifas de IVA.`);
+        alert(`¡Carga Masiva Exitosa! Se registraron ${importados} productos con sus costos e IVA.`);
         setFileMasivo(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         setShowModalMasivo(false);
@@ -934,7 +940,7 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {/* MODAL CREAR / EDITAR PRODUCTO CON SELECCIÓN DE IVA */}
+      {/* MODAL CREAR / EDITAR PRODUCTO CON SELECCIÓN DE IVA Y UNIT ECONOMICS */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl font-sans max-h-[90vh] overflow-y-auto">
@@ -1140,6 +1146,43 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
+                {/* UNIT ECONOMICS: COSTO DE FABRICACIÓN/COMPRA Y FULFILLMENT */}
+                <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
+                  <label className="block text-xs font-satoshi-black text-[#0DE8C0] uppercase">
+                    💰 Unit Economics (Costos Unitarios)
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] mb-1 uppercase">
+                        Costo Fabricación / Compra ($)
+                      </label>
+                      <input 
+                        type="number"
+                        min="0"
+                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
+                        placeholder="45000"
+                        value={costoImportacion}
+                        onChange={(e) => setCostoImportacion(e.target.value ? Number(e.target.value) : '')}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] mb-1 uppercase">
+                        Costo Fulfillment / Operación ($)
+                      </label>
+                      <input 
+                        type="number"
+                        min="0"
+                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
+                        placeholder="8000"
+                        value={costoFulfilment}
+                        onChange={(e) => setCostoFulfilment(e.target.value ? Number(e.target.value) : '')}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* MÓDULO DE CONFIGURACIÓN DE IVA */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between">
@@ -1206,7 +1249,7 @@ export default function ProductosPage() {
                     <textarea
                       rows={2}
                       className="w-full bg-[#253443] border border-slate-700 focus:border-[#C81FDA] rounded-xl p-2.5 text-xs text-white placeholder-[#A0AEC0] focus:outline-none font-satoshi-regular"
-                      placeholder="Ej: Ajuste de precio final / Cambio de tarifa de IVA..."
+                      placeholder="Ej: Ajuste de costo de fabricación / Cambio de tarifa de IVA..."
                       value={motivoEdicion}
                       onChange={(e) => setMotivoEdicion(e.target.value)}
                       required
@@ -1275,7 +1318,7 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {/* MODAL CARGA MASIVA CON SOPORTE DE IVA */}
+      {/* MODAL CARGA MASIVA CON SOPORTE DE COSTOS E IVA */}
       {showModalMasivo && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
@@ -1291,13 +1334,13 @@ export default function ProductosPage() {
             <form onSubmit={handleProcesarCargaMasiva} className="space-y-4">
               <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 text-xs text-slate-300 space-y-2">
                 <p className="font-satoshi-black text-white">PASO 1: Descarga la plantilla estructurada</p>
-                <p className="text-[11px] text-[#A0AEC0]">Soporta Sede, Precios e IVA (`iva_incluido` e `iva_porcentaje`).</p>
+                <p className="text-[11px] text-[#A0AEC0]">Soporta Sede, Precios, Costos de Fabricación/Fulfillment e IVA.</p>
                 <button 
                   type="button"
                   onClick={handleDescargarPlantillaProductos}
                   className="bg-[#6884C5] text-white font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase shadow hover:bg-[#5772b0] transition"
                 >
-                  📥 Descargar Plantilla CSV con IVA
+                  📥 Descargar Plantilla CSV
                 </button>
               </div>
 
