@@ -10,6 +10,11 @@ export default function FacturasPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODAS' | 'EMITIDA' | 'PENDIENTE' | 'ANULADA'>('TODAS');
 
+  // CONTROL DE ORDENAMIENTO Y PAGINACIÓN (50 REGISTROS POR PÁGINA)
+  const [ordenFecha, setOrdenFecha] = useState<'NUEVAS_PRIMERO' | 'ANTIGUAS_PRIMERO'>('NUEVAS_PRIMERO');
+  const [paginaActual, setPaginaActual] = useState<number>(1);
+  const ventasPorPagina = 50;
+
   // FILTRO DINÁMICO DE FECHA
   const fechaHoy = new Date();
   const [mesFiltro, setMesFiltro] = useState<number>(fechaHoy.getMonth());
@@ -45,7 +50,7 @@ export default function FacturasPage() {
     }
   }, []);
 
-  // ESCUCHAR FIRESTORE
+  // ESCUCHAR FIRESTORE EN TIEMPO REAL
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
@@ -74,6 +79,11 @@ export default function FacturasPage() {
 
   const esVendedor = userAuth?.rol === 'VENDEDOR';
 
+  // RESETEAR A PÁGINA 1 CUANDO CAMBIAN LOS FILTROS
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [searchQuery, filtroEstado, mesFiltro, anioFiltro, ordenFecha]);
+
   // FILTRADO DE FACTURAS POR MES Y AÑO
   const facturasPorMesYAnio = facturas.filter(f => {
     const fechaStr = f.fecha_cobro || f.fecha;
@@ -91,20 +101,41 @@ export default function FacturasPage() {
                         String(f.orden_referencia || '').toLowerCase().includes(q);
     
     if (!matchSearch) return false;
-    if (filtroEstado === 'EMITIDA') return (f.estado || 'PAGADA') === 'PAGADA' || f.estado === 'EMITIDA';
-    if (filtroEstado === 'PENDIENTE') return f.estado === 'PENDIENTE';
-    if (filtroEstado === 'ANULADA') return f.estado === 'ANULADA';
+
+    const estadoFactura = String(f.estado || 'EMITIDA').toUpperCase();
+
+    if (filtroEstado === 'EMITIDA') return estadoFactura === 'EMITIDA' || estadoFactura === 'PAGADA';
+    if (filtroEstado === 'PENDIENTE') return estadoFactura === 'PENDIENTE';
+    if (filtroEstado === 'ANULADA') return estadoFactura === 'ANULADA';
 
     return true;
   });
 
-  // MÉTRICAS
+  // ORDENAMIENTO POR FECHA (NUEVAS PRIMERO O MÁS ANTIGUAS PRIMERO)
+  const facturasOrdenadas = [...facturasFiltradas].sort((a, b) => {
+    const fechaA = new Date(a.fecha_cobro || a.fecha || 0).getTime();
+    const fechaB = new Date(b.fecha_cobro || b.fecha || 0).getTime();
+
+    if (ordenFecha === 'NUEVAS_PRIMERO') {
+      return fechaB - fechaA;
+    } else {
+      return fechaA - fechaB;
+    }
+  });
+
+  // LÓGICA DE PAGINACIÓN (50 POR PÁGINA)
+  const totalFacturasCount = facturasOrdenadas.length;
+  const totalPaginas = Math.ceil(totalFacturasCount / ventasPorPagina) || 1;
+  const indiceInicial = (paginaActual - 1) * ventasPorPagina;
+  const facturasPaginadas = facturasOrdenadas.slice(indiceInicial, indiceInicial + ventasPorPagina);
+
+  // MÉTRICAS CALCULADAS EN TIEMPO REAL CON RECONOCIMIENTO DE ANULADAS
   const totalFacturadoMes = facturasPorMesYAnio
-    .filter(f => (f.estado || 'PAGADA') !== 'ANULADA')
+    .filter(f => String(f.estado || '').toUpperCase() !== 'ANULADA')
     .reduce((acc, f) => acc + (Number(f.total) || 0), 0);
 
-  const totalEmitidasMes = facturasPorMesYAnio.filter(f => (f.estado || 'PAGADA') !== 'ANULADA').length;
-  const totalAnuladasMes = facturasPorMesYAnio.filter(f => f.estado === 'ANULADA').length;
+  const totalEmitidasMes = facturasPorMesYAnio.filter(f => String(f.estado || '').toUpperCase() !== 'ANULADA').length;
+  const totalAnuladasMes = facturasPorMesYAnio.filter(f => String(f.estado || '').toUpperCase() === 'ANULADA').length;
 
   // DESCARGAR PLANTILLA COMPLETA DE FACTURACIÓN ELECTRÓNICA DIAN
   const handleDescargarPlantilla = () => {
@@ -150,7 +181,7 @@ export default function FacturasPage() {
           if (columnas.length >= 10) {
             const ordenId = columnas[0] || `ORD-${Date.now().toString().slice(-4)}`;
             const canal = columnas[1] || canalPlataforma;
-            const tipoDoc = columnas[2] || '13'; // 13: Cédula, 31: NIT
+            const tipoDoc = columnas[2] || '13';
             const nit = columnas[3] || '222222222222';
             const cliente = columnas[4] || 'Consumidor Final';
             const correo = columnas[5] || 'facturacion@ecom.com';
@@ -169,14 +200,11 @@ export default function FacturasPage() {
             const ivaMonto = (subtotal * ivaPct) / 100;
             const total = subtotal + ivaMonto;
 
-            // GENERACIÓN AUTOMÁTICA DEL CONSECUTIVO DE FACTURA ELECTRONICA
             const idFacturaGen = `FE-${canal.toUpperCase().slice(0,3)}-${Math.floor(100000 + Math.random() * 900000)}`;
 
             const nuevaFactura = {
               id_cuenta: userAuth?.id_cuenta || 'DEMO_123',
               id_factura: idFacturaGen,
-              
-              // ESTRUCTURA DATOS CLIENTE DIAN
               cliente_nombre: cliente,
               cliente_nit: nit,
               cliente_tipo_doc: tipoDoc,
@@ -185,11 +213,9 @@ export default function FacturasPage() {
               cliente_direccion: direccion,
               cliente_ciudad: ciudad,
               cliente_responsabilidad_fiscal: respFiscal,
-
               vendedor_nombre: `E-Commerce (${canal})`,
               vendedor_id: 'BOT_INTEGRACION',
               nombre_bodega: `Despacho ${canal}`,
-
               subtotal,
               iva_monto: ivaMonto,
               iva_porcentaje: ivaPct,
@@ -386,8 +412,8 @@ export default function FacturasPage() {
         </div>
       </div>
 
-      {/* BÚSQUEDA Y FILTROS */}
-      <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-4 mb-6 flex justify-between items-center">
+      {/* BÚSQUEDA Y FILTROS DE ESTADO / ORDEN DE FECHA */}
+      <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-4 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="relative w-full md:w-80">
           <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -400,10 +426,42 @@ export default function FacturasPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        
-        <div className="flex gap-2">
-          <button onClick={() => setFiltroEstado('TODAS')} className={`px-3 py-1.5 rounded-xl text-xs font-satoshi-black ${filtroEstado === 'TODAS' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'bg-[#1D2935] text-slate-400'}`}>Todas</button>
-          <button onClick={() => setFiltroEstado('EMITIDA')} className={`px-3 py-1.5 rounded-xl text-xs font-satoshi-black ${filtroEstado === 'EMITIDA' ? 'bg-[#6884C5] text-white' : 'bg-[#1D2935] text-slate-400'}`}>Emitidas</button>
+
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+          {/* SELECTOR DE ORDEN POR FECHA */}
+          <div className="flex items-center gap-2 bg-[#1D2935] px-3 py-1.5 rounded-xl border border-slate-700">
+            <span className="text-[10px] font-satoshi-black text-[#A0AEC0] uppercase">Orden:</span>
+            <select
+              className="bg-transparent text-xs text-[#0DE8C0] font-satoshi-black focus:outline-none cursor-pointer"
+              value={ordenFecha}
+              onChange={(e: any) => setOrdenFecha(e.target.value)}
+            >
+              <option value="NUEVAS_PRIMERO" className="bg-[#1D2935] text-white">Más Nuevas Primero</option>
+              <option value="ANTIGUAS_PRIMERO" className="bg-[#1D2935] text-white">Más Antiguas Primero</option>
+            </select>
+          </div>
+
+          {/* FILTROS DE ESTADO */}
+          <div className="flex gap-1 bg-[#1D2935] p-1 rounded-xl border border-slate-700">
+            <button 
+              onClick={() => setFiltroEstado('TODAS')} 
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'TODAS' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'text-slate-400 hover:text-white'}`}
+            >
+              Todas
+            </button>
+            <button 
+              onClick={() => setFiltroEstado('EMITIDA')} 
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'EMITIDA' ? 'bg-[#6884C5] text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Emitidas
+            </button>
+            <button 
+              onClick={() => setFiltroEstado('ANULADA')} 
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'ANULADA' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Anuladas
+            </button>
+          </div>
         </div>
       </div>
 
@@ -419,15 +477,17 @@ export default function FacturasPage() {
               <th className="p-4">Dirección & Ciudad</th>
               <th className="p-4">Producto & Cant.</th>
               <th className="p-4 text-right">Monto Total</th>
+              <th className="p-4 text-center">Estado</th>
               <th className="p-4 text-center">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700/60 font-satoshi-regular">
-            {facturasFiltradas.map((f, idx) => {
+            {facturasPaginadas.map((f, idx) => {
               const item = Array.isArray(f.items) && f.items.length > 0 ? f.items[0] : null;
+              const isAnulada = String(f.estado || '').toUpperCase() === 'ANULADA';
 
               return (
-                <tr key={f.id_doc || idx} className="hover:bg-[#1D2935]/80 transition">
+                <tr key={f.id_doc || idx} className={`hover:bg-[#1D2935]/80 transition ${isAnulada ? 'bg-red-950/20' : ''}`}>
                   <td className="p-4 font-mono font-bold text-white">{f.id_factura}</td>
                   <td className="p-4 font-mono text-[#0DE8C0]">{f.orden_referencia || 'N/A'}</td>
                   <td className="p-4 font-satoshi-black text-slate-200">{f.vendedor_nombre}</td>
@@ -445,6 +505,18 @@ export default function FacturasPage() {
                     <div className="text-[10px] text-[#0DE8C0] font-mono">Cant: {item?.cantidad || 1} u</div>
                   </td>
                   <td className="p-4 text-right font-satoshi-black text-[#0DE8C0]">{formatoCOP(f.total)}</td>
+                  
+                  {/* ESTADO VISUAL DE LA FACTURA */}
+                  <td className="p-4 text-center">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-satoshi-black ${
+                      isAnulada 
+                        ? 'bg-red-950/80 text-red-400 border border-red-800/40' 
+                        : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40'
+                    }`}>
+                      {f.estado || 'EMITIDA'}
+                    </span>
+                  </td>
+
                   <td className="p-4 text-center">
                     <button
                       onClick={() => { setSelectedFactura(f); setShowModalDetail(true); }}
@@ -456,13 +528,67 @@ export default function FacturasPage() {
                 </tr>
               );
             })}
-            {facturasFiltradas.length === 0 && (
+            {facturasPaginadas.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-400">No hay facturas registradas en este periodo. Usa el botón "Subir Archivo Masivo" para cargar tus pedidos.</td>
+                <td colSpan={9} className="p-8 text-center text-slate-400">No hay facturas registradas en este periodo. Usa el botón "Subir Archivo Masivo" para cargar tus pedidos.</td>
               </tr>
             )}
           </tbody>
         </table>
+
+        {/* PIE DE TABLA: CONTROLES DE PAGINACIÓN DE 50 VENTAS */}
+        {totalFacturasCount > 0 && (
+          <div className="bg-[#1D2935] border-t border-slate-700/80 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
+            <div className="text-slate-400 font-satoshi-regular">
+              Mostrando <span className="font-satoshi-black text-white">{indiceInicial + 1}</span> a <span className="font-satoshi-black text-white">{Math.min(indiceInicial + ventasPorPagina, totalFacturasCount)}</span> de <span className="font-satoshi-black text-[#0DE8C0]">{totalFacturasCount}</span> facturas
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+                disabled={paginaActual === 1}
+                className="px-3 py-1.5 bg-[#253443] border border-slate-700 rounded-lg text-white font-satoshi-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+              >
+                Anterior
+              </button>
+
+              <div className="flex items-center gap-1 px-2">
+                {Array.from({ length: totalPaginas }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPaginas || Math.abs(p - paginaActual) <= 1)
+                  .map((numPag, index, array) => {
+                    const mostrarPuntos = index > 0 && numPag - array[index - 1] > 1;
+
+                    return (
+                      <React.Fragment key={numPag}>
+                        {mostrarPuntos && <span className="text-slate-500 px-1">...</span>}
+                        <button
+                          type="button"
+                          onClick={() => setPaginaActual(numPag)}
+                          className={`w-7 h-7 rounded-lg text-xs font-satoshi-black transition ${
+                            paginaActual === numPag
+                              ? 'bg-[#0DE8C0] text-[#1D2935]'
+                              : 'bg-[#253443] text-slate-300 hover:bg-slate-700'
+                          }`}
+                        >
+                          {numPag}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+                disabled={paginaActual === totalPaginas}
+                className="px-3 py-1.5 bg-[#253443] border border-slate-700 rounded-lg text-white font-satoshi-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL CARGA MASIVA (DROPI / VÉNDELO / MASTER) */}
@@ -543,7 +669,7 @@ export default function FacturasPage() {
         </div>
       )}
 
-      {/* MODAL DETALLE / COMPROBANTE FISCAL CON DATOS COMPLETOS DIAN */}
+      {/* MODAL DETALLE / COMPROBANTE FISCAL CON AUDITORÍA DE ANULACIÓN SI APLICA */}
       {showModalDetail && selectedFactura && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white text-slate-900 rounded-2xl w-full max-w-sm p-6 shadow-2xl font-mono text-xs relative space-y-4">
@@ -566,6 +692,15 @@ export default function FacturasPage() {
               <p>RESP. FISCAL: {selectedFactura.cliente_responsabilidad_fiscal || 'R-99-PN'}</p>
               <p>MÉTODO: {selectedFactura.metodo_pago || 'CONTRAENTREGA'}</p>
             </div>
+
+            {/* DETALLE DE AUDITORÍA SI LA FACTURA ESTÁ ANULADA */}
+            {String(selectedFactura.estado || '').toUpperCase() === 'ANULADA' && (
+              <div className="bg-red-50 border border-red-200 p-2.5 rounded-xl text-[10px] space-y-0.5 text-red-800">
+                <p className="font-bold uppercase">⚠️ VENTA ANULADA / REVERSADA</p>
+                <p>Motivo: {selectedFactura.motivo_anulacion || 'Sin motivo especificado'}</p>
+                <p>Anulado por: {selectedFactura.usuario_anulo_nombre || 'Sistema'}</p>
+              </div>
+            )}
 
             <div className="border-b border-dashed border-slate-300 pb-3">
               {Array.isArray(selectedFactura.items) && selectedFactura.items.map((it: any, i: number) => (
