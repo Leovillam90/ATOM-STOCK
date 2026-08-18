@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function ClientesPage() {
@@ -22,6 +22,12 @@ export default function ClientesPage() {
   const [ciudad, setCiudad] = useState('');
   const [estado, setEstado] = useState<'ACTIVO' | 'INACTIVO'>('ACTIVO');
   const [loading, setLoading] = useState(false);
+
+  // Modal Carga Masiva
+  const [showModalMasivo, setShowModalMasivo] = useState(false);
+  const [fileMasivo, setFileMasivo] = useState<File | null>(null);
+  const [loadingMasivo, setLoadingMasivo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Menú Flotante de Opciones (Menú de tres puntos ⋮)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -147,6 +153,105 @@ export default function ClientesPage() {
     }
   };
 
+  // DESCARGAR PLANTILLA CSV PARA CLIENTES
+  const handleDescargarPlantillaClientes = () => {
+    const bom = '\uFEFF';
+    const csvContent = 
+      'SEP=;\n' +
+      'nombre;nit;tipo_cliente;telefono;email;direccion;ciudad\n' +
+      'Leonardo Garcia;11004125;NATURAL;32138712634;leo@gmail.com;Calle 14 34345;Cali\n' +
+      'Distribuidora Global SAS;900123456;JURIDICO;6017654321;contacto@global.com;Av El Dorado 68;Bogotá\n';
+
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'Plantilla_Clientes_ATOM_STOCK.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // PROCESAR CARGA MASIVA CSV DE CLIENTES
+  const handleProcesarCargaMasivaClientes = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fileMasivo) return alert('Por favor selecciona un archivo CSV.');
+
+    setLoadingMasivo(true);
+    const reader = new FileReader();
+
+    reader.onload = async (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const lines = text.split('\n')
+          .map(l => l.trim())
+          .filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
+
+        if (lines.length <= 1) {
+          alert('El archivo está vacío o solo contiene encabezados.');
+          setLoadingMasivo(false);
+          return;
+        }
+
+        const separador = lines[0].includes(';') ? ';' : ',';
+        let creados = 0;
+        let actualizados = 0;
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
+          if (cols.length >= 1 && cols[0] !== '') {
+            const nomInput = cols[0];
+            const nitInput = cols[1] ? cols[1].trim() : 'CF_GENERAL';
+            const tipoInputRaw = cols[2] ? cols[2].toUpperCase().trim() : 'NATURAL';
+            const tipoInput = (tipoInputRaw === 'JURIDICO' || tipoInputRaw === 'EMPRESA') ? 'JURIDICO' : 'NATURAL';
+            const telInput = cols[3] || '';
+            const emailInput = cols[4] ? cols[4].toLowerCase().trim() : '';
+            const dirInput = cols[5] || 'General';
+            const ciuInput = cols[6] || 'Colombia';
+
+            // Buscar si ya existe un cliente con este NIT/Cédula en el estado local o Firestore
+            const clienteExistente = clientes.find(c => String(c.nit || '').trim() === nitInput && nitInput !== 'CF_GENERAL');
+            const idDocFinal = clienteExistente ? clienteExistente.id_doc : `CLI_${Date.now().toString().slice(-6)}_${i}`;
+
+            const cliObj = {
+              id_cuenta: userAuth.id_cuenta,
+              id_cliente: idDocFinal,
+              nombre: nomInput,
+              nit: nitInput,
+              tipo_cliente: tipoInput,
+              telefono: telInput,
+              email: emailInput,
+              direccion: dirInput,
+              ciudad: ciuInput,
+              estado: 'ACTIVO',
+              fecha_actualizacion: new Date().toISOString()
+            };
+
+            await setDoc(doc(db, 'clientes', idDocFinal), cliObj, { merge: true });
+
+            if (clienteExistente) {
+              actualizados++;
+            } else {
+              creados++;
+            }
+          }
+        }
+
+        alert(`¡Carga Masiva Exitosa!\n\n✨ Clientes Creados: ${creados}\n🔄 Clientes Actualizados por NIT: ${actualizados}`);
+        setFileMasivo(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setShowModalMasivo(false);
+      } catch (err: any) {
+        console.error(err);
+        alert('Error al procesar la carga masiva: ' + err.message);
+      } finally {
+        setLoadingMasivo(false);
+      }
+    };
+
+    reader.readAsText(fileMasivo);
+  };
+
   // Filtrado
   const clientesFiltrados = clientes.filter(c => {
     const q = searchQuery.toLowerCase().trim();
@@ -187,17 +292,30 @@ export default function ClientesPage() {
           </p>
         </div>
 
-        {/* BOTÓN ACCIÓN PRINCIPAL (SEA GREEN) */}
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          className="bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black px-6 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-lg shadow-emerald-950/40 flex items-center gap-2 shrink-0"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
-          </svg>
-          <span>Nuevo Cliente</span>
-        </button>
+        {/* BOTONES DE ACCIÓN PRINCIPALES */}
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowModalMasivo(true)}
+            className="bg-transparent hover:bg-[#253443] border border-[#6884C5] text-[#6884C5] hover:text-white font-satoshi-black px-4 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <span>Carga Masiva</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            className="bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black px-6 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-lg shadow-emerald-950/40 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Nuevo Cliente</span>
+          </button>
+        </div>
       </div>
 
       {/* METRICAS SUPERIORES (GRID DE 3 COLUMNAS IDÉNTICAS) */}
@@ -624,6 +742,69 @@ export default function ClientesPage() {
           </div>
         </div>
       )}
+
+      {/* MODAL CARGA MASIVA DE CLIENTES VIA CSV */}
+      {showModalMasivo && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
+            <div className="flex justify-between items-center mb-6 border-b border-slate-700/60 pb-3">
+              <h3 className="text-lg font-satoshi-black text-white uppercase">Carga Masiva de Clientes</h3>
+              <button onClick={() => setShowModalMasivo(false)} className="text-slate-400 hover:text-white transition">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleProcesarCargaMasivaClientes} className="space-y-4">
+              <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 text-xs text-slate-300 space-y-2">
+                <p className="font-satoshi-black text-white">PASO 1: Descarga la plantilla estructurada</p>
+                <p className="text-[11px] text-[#A0AEC0]">Soporta Nombre, Cédula/NIT, Tipo de Cliente, Teléfono, Correo y Ciudad.</p>
+                <button 
+                  type="button"
+                  onClick={handleDescargarPlantillaClientes}
+                  className="bg-[#6884C5] text-white font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase shadow hover:bg-[#5772b0] transition flex items-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>Descargar Plantilla CSV</span>
+                </button>
+              </div>
+
+              <div className="border-2 border-dashed border-slate-700/80 rounded-xl p-6 text-center space-y-2 bg-[#1D2935]">
+                <p className="font-satoshi-black text-xs text-white">PASO 2: Adjunta tu archivo (.csv)</p>
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  accept=".csv"
+                  onChange={(e) => setFileMasivo(e.target.files ? e.target.files[0] : null)}
+                  className="text-xs text-[#A0AEC0]"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-slate-700/60">
+                <button 
+                  type="button" 
+                  onClick={() => setShowModalMasivo(false)}
+                  className="flex-1 bg-[#1D2935] text-slate-300 font-satoshi-black py-3 rounded-xl text-xs uppercase"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={loadingMasivo || !fileMasivo}
+                  className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {loadingMasivo ? 'Importando...' : '⚡ Procesar e Indexar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
