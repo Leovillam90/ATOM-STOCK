@@ -20,6 +20,8 @@ export default function VentasPage() {
   const [cart, setCart] = useState<any[]>([]);
   const [clienteSel, setClienteSel] = useState<string>('CF_GENERAL');
   const [metodoPago, setMetodoPago] = useState<'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA'>('EFECTIVO');
+  const [montoPagaCon, setMontoPagaCon] = useState<number>(0);
+  const [ivaIncluido, setIvaIncluido] = useState<boolean>(true); // Configuración de IVA Incluido
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Modal Ticket / Recibo Generado
@@ -111,10 +113,12 @@ export default function VentasPage() {
     };
   }, [userAuth, sedeDespacho]);
 
-  // Lógica del Carrito POS
+  // Lógica del Carrito POS con Tarifa de IVA por Producto
   const addToCart = (prod: any) => {
     setCart(prev => {
       const idx = prev.findIndex(item => item.sku === prod.sku);
+      const tarifaIva = prod.iva !== undefined ? Number(prod.iva) : 19;
+
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx].cantidad += 1;
@@ -124,6 +128,7 @@ export default function VentasPage() {
           sku: prod.sku,
           nombre: prod.nombre,
           precio: prod.plocal || prod.precio || 0,
+          tarifaIva: tarifaIva,
           cantidad: 1
         }];
       }
@@ -146,12 +151,43 @@ export default function VentasPage() {
     setCart(prev => prev.filter(item => item.sku !== sku));
   };
 
-  const totalCarrito = cart.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+  // CÁLCULOS AUTOMÁTICOS DE IVA Y BASE GRAVABLE
+  const subtotalBrutoCarrito = cart.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+
+  let baseGravableTotal = 0;
+  let ivaMontoTotal = 0;
+  let totalCobroPOS = 0;
+
+  if (ivaIncluido) {
+    totalCobroPOS = subtotalBrutoCarrito;
+    cart.forEach(item => {
+      const tarifa = item.tarifaIva || 19;
+      const totalItem = item.precio * item.cantidad;
+      const baseItem = totalItem / (1 + (tarifa / 100));
+      const ivaItem = totalItem - baseItem;
+
+      baseGravableTotal += baseItem;
+      ivaMontoTotal += ivaItem;
+    });
+  } else {
+    baseGravableTotal = subtotalBrutoCarrito;
+    cart.forEach(item => {
+      const tarifa = item.tarifaIva || 19;
+      const totalItem = item.precio * item.cantidad;
+      ivaMontoTotal += (totalItem * tarifa) / 100;
+    });
+    totalCobroPOS = baseGravableTotal + ivaMontoTotal;
+  }
+
+  const cambioDevuelto = metodoPago === 'EFECTIVO' && montoPagaCon > totalCobroPOS ? montoPagaCon - totalCobroPOS : 0;
 
   // Procesar Cobro POS
   const handleCobrarVenta = async () => {
     if (cart.length === 0) return alert('El carrito está vacío. Selecciona al menos un producto.');
     if (!sedeDespacho) return alert('Por favor selecciona la sede de despacho.');
+    if (metodoPago === 'EFECTIVO' && montoPagaCon > 0 && montoPagaCon < totalCobroPOS) {
+      return alert('El monto pagado en efectivo es menor al total a cobrar.');
+    }
 
     setIsProcessing(true);
     try {
@@ -170,10 +206,15 @@ export default function VentasPage() {
         vendedor_id: userAuth?.id_usuario || '',
         cliente_nombre: cliObj ? cliObj.nombre : 'Consumidor Final',
         cliente_nit: clienteSel,
+        cliente_correo: cliObj?.correo || 'cliente@general.com',
         items: cart,
         metodo_pago: metodoPago,
-        subtotal: totalCarrito,
-        total: totalCarrito,
+        subtotal: baseGravableTotal,
+        iva_monto: ivaMontoTotal,
+        iva_incluido_config: ivaIncluido,
+        monto_paga_con: montoPagaCon,
+        cambio_devuelto: cambioDevuelto,
+        total: totalCobroPOS,
         estado: 'PAGADA'
       };
 
@@ -198,6 +239,7 @@ export default function VentasPage() {
       }
 
       setCart([]);
+      setMontoPagaCon(0);
       setSelectedVentaTicket(ventaData);
       setShowTicketModal(true);
     } catch (err: any) {
@@ -354,19 +396,35 @@ export default function VentasPage() {
           
           {/* SECCIÓN IZQUIERDA: CATÁLOGO DE SELECCIÓN */}
           <div className="lg:col-span-7 space-y-4">
-            <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-3 shadow-lg">
-              <div className="relative">
+            
+            {/* BARRA DE BÚSQUEDA Y CONFIGURACIÓN DE IVA INCLUIDO */}
+            <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-3 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="relative flex-1 w-full">
                 <svg className="w-5 h-5 text-[#0DE8C0] absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input 
                   type="text" 
-                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl pl-11 pr-4 py-3 text-sm text-white placeholder-[#A0AEC0] focus:outline-none font-satoshi-regular transition"
+                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl pl-11 pr-4 py-2.5 text-xs text-white placeholder-[#A0AEC0] focus:outline-none font-satoshi-regular transition"
                   placeholder="Escribe el nombre o escanea el código SKU..."
                   value={searchProd}
                   onChange={(e) => setSearchQueryProd(e.target.value)}
                   autoFocus
                 />
+              </div>
+
+              {/* CHECKBOX CONFIGURACIÓN IVA INCLUIDO */}
+              <div className="flex items-center gap-2 bg-[#1D2935] px-3.5 py-2 rounded-xl border border-slate-700/80 shrink-0 select-none">
+                <input
+                  type="checkbox"
+                  id="ivaCheck"
+                  checked={ivaIncluido}
+                  onChange={(e) => setIvaIncluido(e.target.checked)}
+                  className="rounded bg-[#253443] border-slate-700 text-[#0DE8C0] focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+                <label htmlFor="ivaCheck" className="text-xs font-satoshi-black text-slate-200 cursor-pointer">
+                  IVA Incluido en Precio
+                </label>
               </div>
             </div>
 
@@ -374,6 +432,7 @@ export default function VentasPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
               {productosPOS.map((prod, idx) => {
                 const stockSede = Number(prod.stock?.[sedeDespacho] || 0);
+                const tarifaIvaProd = prod.iva !== undefined ? Number(prod.iva) : 19;
 
                 return (
                   <div
@@ -399,9 +458,14 @@ export default function VentasPage() {
                     </div>
 
                     <div className="mt-3 pt-2 border-t border-slate-700/60 flex items-center justify-between">
-                      <span className="font-satoshi-black text-sm text-[#0DE8C0]">
-                        {formatoCOP(prod.plocal || prod.precio || 0)}
-                      </span>
+                      <div>
+                        <span className="font-satoshi-black text-sm text-[#0DE8C0] block">
+                          {formatoCOP(prod.plocal || prod.precio || 0)}
+                        </span>
+                        <span className="text-[9px] text-[#A0AEC0] block font-mono">
+                          IVA: {tarifaIvaProd}%
+                        </span>
+                      </div>
                       <span className={`text-[9px] font-satoshi-black px-1.5 py-0.5 rounded ${
                         stockSede <= 0 ? 'bg-red-950/80 text-red-400' : 'bg-slate-800 text-slate-300'
                       }`}>
@@ -455,7 +519,7 @@ export default function VentasPage() {
               </select>
             </div>
 
-            {/* CARRITO Y RESUMEN */}
+            {/* CARRITO Y RESUMEN DE COBRO */}
             <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[480px]">
               <div className="space-y-3">
                 <div className="flex justify-between items-center border-b border-slate-700/60 pb-2">
@@ -473,12 +537,14 @@ export default function VentasPage() {
                   )}
                 </div>
 
-                <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                   {cart.map((item) => (
                     <div key={item.sku} className="bg-[#1D2935] rounded-xl p-2.5 border border-slate-700/60 flex items-center justify-between gap-2">
                       <div className="truncate flex-1">
                         <div className="text-xs font-satoshi-black text-white truncate">{item.nombre}</div>
-                        <div className="text-[10px] text-[#A0AEC0]">{formatoCOP(item.precio)} c/u</div>
+                        <div className="text-[10px] text-[#A0AEC0]">
+                          {formatoCOP(item.precio)} x {item.cantidad} (IVA {item.tarifaIva}%)
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -516,13 +582,14 @@ export default function VentasPage() {
                 </div>
               </div>
 
-              {/* CONTROLES DE PAGO Y TOTAL A PAGAR */}
-              <div className="space-y-4 pt-4 border-t border-slate-700/60">
+              {/* CONTROLES DE PAGO Y LIQUIDACIÓN DE IVA */}
+              <div className="space-y-3 pt-3 border-t border-slate-700/60">
+                
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">Cliente</label>
                     <select
-                      className="w-full bg-[#1D2935] border border-slate-700 text-xs text-white rounded-xl p-2.5 focus:outline-none"
+                      className="w-full bg-[#1D2935] border border-slate-700 text-xs text-white rounded-xl p-2 focus:outline-none"
                       value={clienteSel}
                       onChange={(e) => setClienteSel(e.target.value)}
                     >
@@ -538,7 +605,7 @@ export default function VentasPage() {
                   <div>
                     <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">Método de Pago</label>
                     <select
-                      className="w-full bg-[#1D2935] border border-slate-700 text-xs text-white font-satoshi-black rounded-xl p-2.5 focus:outline-none"
+                      className="w-full bg-[#1D2935] border border-slate-700 text-xs text-white font-satoshi-black rounded-xl p-2 focus:outline-none"
                       value={metodoPago}
                       onChange={(e: any) => setMetodoPago(e.target.value)}
                     >
@@ -549,18 +616,47 @@ export default function VentasPage() {
                   </div>
                 </div>
 
-                <div className="bg-[#1D2935] rounded-xl p-4 border border-slate-700/80 flex items-center justify-between">
-                  <span className="text-xs font-satoshi-black text-[#A0AEC0] uppercase">Total a Pagar</span>
-                  <span className="text-3xl font-black text-[#0DE8C0] font-satoshi-black">
-                    {formatoCOP(totalCarrito)}
-                  </span>
+                {/* DESGLOSE FISCAL (BASE Y MONTO DE IVA) */}
+                <div className="bg-[#1D2935] p-3 rounded-xl border border-slate-700/80 space-y-1 text-xs">
+                  <div className="flex justify-between text-slate-400">
+                    <span>Base Gravable:</span>
+                    <span>{formatoCOP(baseGravableTotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>IVA Calculado:</span>
+                    <span>{formatoCOP(ivaMontoTotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-satoshi-black text-white pt-1 border-t border-slate-700/60">
+                    <span>TOTAL A COBRAR:</span>
+                    <span className="text-[#0DE8C0]">{formatoCOP(totalCobroPOS)}</span>
+                  </div>
                 </div>
+
+                {metodoPago === 'EFECTIVO' && (
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">Paga Con ($)</label>
+                      <input
+                        type="number"
+                        className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2 text-white focus:outline-none"
+                        value={montoPagaCon}
+                        onChange={(e) => setMontoPagaCon(Number(e.target.value))}
+                      />
+                    </div>
+                    {cambioDevuelto > 0 && (
+                      <div className="bg-[#1D2935] p-2 rounded-xl border border-slate-700 flex flex-col justify-center">
+                        <span className="text-[9px] text-slate-400 font-satoshi-black uppercase">Cambio Devuelto:</span>
+                        <span className="text-amber-400 font-satoshi-black text-xs">{formatoCOP(cambioDevuelto)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <button
                   type="button"
                   onClick={handleCobrarVenta}
                   disabled={cart.length === 0 || isProcessing}
-                  className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] disabled:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-[#1D2935] font-satoshi-black p-4 rounded-xl text-sm uppercase tracking-wider transition-all duration-300 shadow-xl shadow-emerald-950/50 flex items-center justify-center gap-2"
+                  className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] disabled:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-[#1D2935] font-satoshi-black p-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-xl flex items-center justify-center gap-2"
                 >
                   {isProcessing ? (
                     <span>Procesando Venta...</span>
@@ -569,7 +665,7 @@ export default function VentasPage() {
                       <svg className="w-5 h-5 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
-                      <span>Cobrar y Generar Factura</span>
+                      <span>Cobrar y Generar Ticket</span>
                     </>
                   )}
                 </button>
@@ -719,7 +815,7 @@ export default function VentasPage() {
         </div>
       )}
 
-      {/* MODAL DE COMPROBANTE DE VENTA */}
+      {/* MODAL DE COMPROBANTE DE VENTA (TICKET) */}
       {showTicketModal && selectedVentaTicket && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700/80 text-slate-200 rounded-2xl w-full max-w-sm p-6 shadow-2xl font-mono text-xs relative space-y-4 animate-in fade-in slide-in-from-bottom-2">
@@ -761,7 +857,7 @@ export default function VentasPage() {
                 <div key={i} className="flex justify-between items-start text-[11px]">
                   <div className="truncate pr-2">
                     <div className="font-bold text-slate-100 truncate">{it.nombre}</div>
-                    <div className="text-[9px] text-[#A0AEC0]">{it.cantidad} x {formatoCOP(it.precio)}</div>
+                    <div className="text-[9px] text-[#A0AEC0]">{it.cantidad} x {formatoCOP(it.precio)} (IVA {it.tarifaIva || 19}%)</div>
                   </div>
                   <span className="font-bold text-[#0DE8C0]">{formatoCOP(it.cantidad * it.precio)}</span>
                 </div>
@@ -769,6 +865,12 @@ export default function VentasPage() {
             </div>
 
             <div className="space-y-1 pt-1 text-right">
+              {selectedVentaTicket.iva_monto !== undefined && (
+                <div className="flex justify-between text-[11px] text-slate-400">
+                  <span>IVA Discriminado:</span>
+                  <span>{formatoCOP(selectedVentaTicket.iva_monto)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-xs text-slate-300">
                 <span>Método Pago:</span>
                 <span className="font-bold text-white">{selectedVentaTicket.metodo_pago || 'EFECTIVO'}</span>
