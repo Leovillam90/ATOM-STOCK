@@ -1456,7 +1456,7 @@ export default function ProductosPage() {
                   disabled={loadingMasivo || !fileMasivo}
                   className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  {loadingMasivo ? 'Importando...' : '⚡ Procesar e Indexar'}
+                  {loadingMasivo ? 'Importando...' : 'Procesar e Indexar'}
                 </button>
               </div>
             </form>
