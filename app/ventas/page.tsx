@@ -135,8 +135,16 @@ export default function VentasPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Carrito POS
+  // AGREGAR AL CARRITO CON VALIDACIÓN DE STOCK DISPONIBLE
   const addToCart = (prod: any) => {
+    const stockDisponible = Number(prod.stock?.[sedeDespacho] || 0);
+    const itemActual = cart.find(item => item.sku === prod.sku);
+    const cantidadEnCarrito = itemActual ? itemActual.cantidad : 0;
+
+    if (cantidadEnCarrito + 1 > stockDisponible) {
+      return alert(`⚠️ Stock Insuficiente: El producto "${prod.nombre}" solo cuenta con ${stockDisponible} unidades disponibles en esta sede.`);
+    }
+
     setCart(prev => {
       const idx = prev.findIndex(item => item.sku === prod.sku);
       const tarifaIva = prod.iva !== undefined ? Number(prod.iva) : 19;
@@ -157,11 +165,21 @@ export default function VentasPage() {
     });
   };
 
+  // ACTUALIZAR CANTIDAD CON BOTONES + Y - CON VALIDACIÓN DE STOCK
   const updateQuantity = (sku: string, delta: number) => {
+    const prodObj = productos.find(p => p.sku === sku);
+    const stockDisponible = Number(prodObj?.stock?.[sedeDespacho] || 0);
+
     setCart(prev => {
       return prev.map(item => {
         if (item.sku === sku) {
           const nuevaCant = item.cantidad + delta;
+
+          if (delta > 0 && nuevaCant > stockDisponible) {
+            alert(`⚠️ Stock Insuficiente: Solo hay ${stockDisponible} unidades disponibles de este producto.`);
+            return item;
+          }
+
           return nuevaCant > 0 ? { ...item, cantidad: nuevaCant } : null;
         }
         return item;
@@ -169,8 +187,16 @@ export default function VentasPage() {
     });
   };
 
-  // CAMBIO MANUAL DE CANTIDAD CON TECLADO
+  // CAMBIO MANUAL DE CANTIDAD CON TECLADO Y VALIDACIÓN DE STOCK
   const handleQuantityManualChange = (sku: string, value: number) => {
+    const prodObj = productos.find(p => p.sku === sku);
+    const stockDisponible = Number(prodObj?.stock?.[sedeDespacho] || 0);
+
+    if (value > stockDisponible) {
+      alert(`⚠️ Stock Insuficiente: No puedes solicitar ${value} unidades. El stock máximo disponible es de ${stockDisponible} unidades.`);
+      value = stockDisponible;
+    }
+
     const valFinal = Math.max(1, value);
     setCart(prev => prev.map(item => item.sku === sku ? { ...item, cantidad: valFinal } : item));
   };
@@ -228,10 +254,21 @@ export default function VentasPage() {
     String(c.nit || c.id_cliente || '').toLowerCase().includes(clienteSearch.toLowerCase())
   );
 
-  // Procesar Cobro POS
+  // PROCESAR COBRO POS CON AUDITORÍA PREVIA DE INVENTARIOS
   const handleCobrarVenta = async () => {
     if (cart.length === 0) return alert('El carrito está vacío. Selecciona al menos un producto.');
     if (!sedeDespacho) return alert('Por favor selecciona la sede de despacho.');
+
+    // VERIFICACIÓN INTEGRAL DE STOCK ANTES DEL REGISTRO FINAL
+    for (const item of cart) {
+      const prodObj = productos.find(p => p.sku === item.sku);
+      const stockDisponible = Number(prodObj?.stock?.[sedeDespacho] || 0);
+
+      if (item.cantidad > stockDisponible) {
+        return alert(`🚫 Venta Bloqueada: El producto "${item.nombre}" supera el inventario real (${stockDisponible} disponibles). Ajusta la cantidad antes de continuar.`);
+      }
+    }
+
     if (montoDescuento && Number(montoDescuento) > 0 && !motivoDescuento.trim()) {
       return alert('Ingresa la justificación o motivo del descuento otorgado.');
     }
@@ -385,9 +422,16 @@ export default function VentasPage() {
            String(v.nombre_bodega || '').toLowerCase().includes(q);
   });
 
+  // FILTRADO DINÁMICO DE PRODUCTOS SEGÚN LA SEDE ACTIVA (> 0 UNIDADES)
   const productosPOS = productos.filter(p => {
     const q = searchProd.toLowerCase().trim();
-    return String(p.nombre || '').toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q);
+    const matchSearch = String(p.nombre || '').toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q);
+    
+    // Obtener stock de la sede seleccionada en la caja
+    const stockEnSedeActiva = Number(p.stock?.[sedeDespacho] || 0);
+
+    // Solo mostrar productos que coincidan con la búsqueda Y tengan stock > 0 en la sede activa
+    return matchSearch && stockEnSedeActiva > 0;
   });
 
   const sedeActivaObj = sucursales.find(s => s.id_sucursal === sedeDespacho);
@@ -417,7 +461,7 @@ export default function VentasPage() {
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 00-4z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 000-4z" />
             </svg>
             <span>Caja Registrar (POS)</span>
           </button>
@@ -473,7 +517,7 @@ export default function VentasPage() {
               </div>
             </div>
 
-            {/* GRID DE PRODUCTOS */}
+            {/* GRID DE PRODUCTOS FILTRADOS POR LA SEDE SELECCIONADA */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
               {productosPOS.map((prod, idx) => {
                 const stockSede = Number(prod.stock?.[sedeDespacho] || 0);
@@ -511,15 +555,19 @@ export default function VentasPage() {
                           IVA: {tarifaIvaProd}%
                         </span>
                       </div>
-                      <span className={`text-[9px] font-satoshi-black px-1.5 py-0.5 rounded ${
-                        stockSede <= 0 ? 'bg-red-950/80 text-red-400' : 'bg-slate-800 text-slate-300'
-                      }`}>
+                      <span className="text-[9px] font-satoshi-black px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
                         Stk: {stockSede}
                       </span>
                     </div>
                   </div>
                 );
               })}
+
+              {productosPOS.length === 0 && (
+                <div className="col-span-full text-center py-12 bg-[#253443] rounded-2xl border border-slate-700/60 p-6 text-[#A0AEC0] text-xs font-satoshi-regular">
+                  No hay productos disponibles con stock en la sede seleccionada.
+                </div>
+              )}
             </div>
           </div>
 
@@ -571,7 +619,7 @@ export default function VentasPage() {
                   )}
                 </div>
 
-                {/* CANTIDAD MANUAL + BOTONES + Y - */}
+                {/* CANTIDAD MANUAL + BOTONES + Y - CON CONTROLES DE STOCK */}
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
                   {cart.map((item) => (
                     <div key={item.sku} className="bg-[#1D2935] rounded-xl p-2.5 border border-slate-700/60 flex items-center justify-between gap-2">
@@ -585,7 +633,7 @@ export default function VentasPage() {
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button type="button" onClick={() => updateQuantity(item.sku, -1)} className="w-6 h-6 bg-[#253443] text-white rounded-lg font-satoshi-black text-xs hover:bg-slate-700">-</button>
                         
-                        {/* CAMPO MANUAL DE CANTIDAD */}
+                        {/* CAMPO MANUAL DE CANTIDAD CON LÍMITE DE INVENTARIO */}
                         <input
                           type="number"
                           min="1"
