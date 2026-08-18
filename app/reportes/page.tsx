@@ -90,6 +90,16 @@ export default function ReportesPage() {
   ventasEntregadasFiltradas.forEach(v => {
     totalIvaMontoAcumulado += Number(v.iva_monto) || 0;
 
+    // DETERMINAR SI LA VENTA ES DE CANAL E-COMMERCE
+    const origenStr = String(v.origen || v.canal_origen || '').toUpperCase();
+    const vendedorStr = String(v.vendedor_nombre || '').toUpperCase();
+    const esEcommerce = origenStr.includes('ECOMMERCE') || 
+                        origenStr.includes('MASIVA') || 
+                        vendedorStr.includes('E-COMMERCE') || 
+                        vendedorStr.includes('DROPI') || 
+                        vendedorStr.includes('VENDELO') || 
+                        vendedorStr.includes('MASTER');
+
     if (Array.isArray(v.items)) {
       v.items.forEach((it: any) => {
         const cant = Number(it.cantidad) || 1;
@@ -99,8 +109,14 @@ export default function ReportesPage() {
         if (prod) {
           const cImp = Number(prod.costo_importacion) || 0;
           const cFul = Number(prod.costo_fulfilment) || 0;
+          
+          // COSTO DE COMPRA/FABRICACIÓN: Se aplica a todas las ventas
           costoImportacionTotal += cImp * cant;
-          costoFulfilmentTotal += cFul * cant;
+          
+          // COSTO DE FULFILLMENT: SOLO se aplica si la venta es por E-Commerce
+          if (esEcommerce) {
+            costoFulfilmentTotal += cFul * cant;
+          }
         }
       });
     }
@@ -110,6 +126,8 @@ export default function ReportesPage() {
   const baseGravableTotal = totalVentasEntregadas - totalIvaMontoAcumulado;
   const costoDirectoProducto = costoImportacionTotal > 0 ? costoImportacionTotal : (totalVentasEntregadas * 0.3);
   const utilidadBruta = baseGravableTotal - costoDirectoProducto;
+  
+  // Ganancia Neta restando Fulfillment exclusivo de E-Commerce
   const gananciaNetaReal = utilidadBruta - costoFulfilmentTotal;
   const porcentajeMargenNeto = totalVentasEntregadas > 0 ? Math.round((gananciaNetaReal / totalVentasEntregadas) * 100) : 0;
   
@@ -134,7 +152,7 @@ export default function ReportesPage() {
     return acc + (cantStock * (costoUnit || (Number(p.precio) * 0.4)));
   }, 0);
 
-  // 3. AGRUPACIÓN DINÁMICA DE VENTAS (SEDES, VENDEDORES Y CANALES: E-COMMERCE / BODEGAS / TIENDA FÍSICA)
+  // 3. AGRUPACIÓN DINÁMICA DE VENTAS (SEDES, VENDEDORES Y CANALES)
   const obtenerAgrupacion = () => {
     const mapa: { [key: string]: number } = {};
 
@@ -146,7 +164,6 @@ export default function ReportesPage() {
       } else if (agruparPor === 'VENDEDORES') {
         clave = v.vendedor_nombre || 'Vendedor POS';
       } else if (agruparPor === 'CANALES') {
-        // CLASIFICACIÓN DE CANALES: E-COMMERCE / BODEGAS / TIENDA FÍSICA
         const origenStr = String(v.origen || v.canal_origen || '').toUpperCase();
         const vendedorStr = String(v.vendedor_nombre || '').toUpperCase();
         const bodegaStr = String(v.nombre_bodega || '').toUpperCase();
@@ -317,7 +334,7 @@ export default function ReportesPage() {
           </div>
 
           <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
-            Resultado descontando COGS, IVA y Fletes
+            Resultado descontando COGS, IVA y Fulfillment E-Commerce
           </p>
         </div>
 
@@ -401,7 +418,7 @@ export default function ReportesPage() {
                 <span>-{formatoCOP(costoDirectoProducto)}</span>
               </div>
               <div className="flex justify-between items-center text-red-300">
-                <span>(-) Operación / Fulfilment / Envíos:</span>
+                <span>(-) Fulfillment (Solo E-Commerce):</span>
                 <span>-{formatoCOP(costoFulfilmentTotal)}</span>
               </div>
               <div className="flex justify-between items-center font-satoshi-black text-[#C81FDA] pt-3.5 border-t border-slate-700">
