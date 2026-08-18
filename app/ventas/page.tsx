@@ -56,9 +56,6 @@ export default function VentasPage() {
     if (savedUser) {
       const u = JSON.parse(savedUser);
       setUserAuth(u);
-      if (u.id_sucursal) {
-        setSedeDespacho(u.id_sucursal);
-      }
     }
   }, []);
 
@@ -104,11 +101,6 @@ export default function VentasPage() {
     const unsubSuc = onSnapshot(qSuc, (snap) => {
       const sucs = snap.docs.map(d => d.data());
       setSucursales(sucs);
-      
-      if (sucs.length > 0 && !sedeDespacho) {
-        const idSucAcceso = userAuth.id_sucursal || sucs[0].id_sucursal;
-        setSedeDespacho(idSucAcceso);
-      }
     });
 
     const qCli = query(collection(db, 'clientes'), where('id_cuenta', '==', userAuth.id_cuenta));
@@ -122,7 +114,21 @@ export default function VentasPage() {
       unsubSuc();
       unsubCli();
     };
-  }, [userAuth, sedeDespacho]);
+  }, [userAuth]);
+
+  // SINCRONIZACIÓN AUTOMÁTICA E INMEDIATA DE LA SEDE ACTIVA
+  useEffect(() => {
+    if (sucursales.length > 0 && !sedeDespacho) {
+      const sucsActivas = sucursales.filter(s => s.estado !== 'INACTIVA');
+      if (sucsActivas.length > 0) {
+        const idSedePreferida = (userAuth?.id_sucursal && sucsActivas.some(s => s.id_sucursal === userAuth.id_sucursal))
+          ? userAuth.id_sucursal
+          : sucsActivas[0].id_sucursal;
+        
+        setSedeDespacho(idSedePreferida);
+      }
+    }
+  }, [sucursales, userAuth, sedeDespacho]);
 
   // Cierre de Popover de Cliente al dar click afuera
   useEffect(() => {
@@ -137,7 +143,8 @@ export default function VentasPage() {
 
   // AGREGAR AL CARRITO CON VALIDACIÓN DE STOCK DISPONIBLE
   const addToCart = (prod: any) => {
-    const stockDisponible = Number(prod.stock?.[sedeDespacho] || 0);
+    const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
+    const stockDisponible = Number(prod.stock?.[sedeEfectiva] || 0);
     const itemActual = cart.find(item => item.sku === prod.sku);
     const cantidadEnCarrito = itemActual ? itemActual.cantidad : 0;
 
@@ -167,8 +174,9 @@ export default function VentasPage() {
 
   // ACTUALIZAR CANTIDAD CON BOTONES + Y - CON VALIDACIÓN DE STOCK
   const updateQuantity = (sku: string, delta: number) => {
+    const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
     const prodObj = productos.find(p => p.sku === sku);
-    const stockDisponible = Number(prodObj?.stock?.[sedeDespacho] || 0);
+    const stockDisponible = Number(prodObj?.stock?.[sedeEfectiva] || 0);
 
     setCart(prev => {
       return prev.map(item => {
@@ -189,8 +197,9 @@ export default function VentasPage() {
 
   // CAMBIO MANUAL DE CANTIDAD CON TECLADO Y VALIDACIÓN DE STOCK
   const handleQuantityManualChange = (sku: string, value: number) => {
+    const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
     const prodObj = productos.find(p => p.sku === sku);
-    const stockDisponible = Number(prodObj?.stock?.[sedeDespacho] || 0);
+    const stockDisponible = Number(prodObj?.stock?.[sedeEfectiva] || 0);
 
     if (value > stockDisponible) {
       alert(`⚠️ Stock Insuficiente: No puedes solicitar ${value} unidades. El stock máximo disponible es de ${stockDisponible} unidades.`);
@@ -256,13 +265,14 @@ export default function VentasPage() {
 
   // PROCESAR COBRO POS CON AUDITORÍA PREVIA DE INVENTARIOS
   const handleCobrarVenta = async () => {
+    const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
     if (cart.length === 0) return alert('El carrito está vacío. Selecciona al menos un producto.');
-    if (!sedeDespacho) return alert('Por favor selecciona la sede de despacho.');
+    if (!sedeEfectiva) return alert('Por favor selecciona la sede de despacho.');
 
     // VERIFICACIÓN INTEGRAL DE STOCK ANTES DEL REGISTRO FINAL
     for (const item of cart) {
       const prodObj = productos.find(p => p.sku === item.sku);
-      const stockDisponible = Number(prodObj?.stock?.[sedeDespacho] || 0);
+      const stockDisponible = Number(prodObj?.stock?.[sedeEfectiva] || 0);
 
       if (item.cantidad > stockDisponible) {
         return alert(`🚫 Venta Bloqueada: El producto "${item.nombre}" supera el inventario real (${stockDisponible} disponibles). Ajusta la cantidad antes de continuar.`);
@@ -279,14 +289,14 @@ export default function VentasPage() {
     setIsProcessing(true);
     try {
       const idFactura = `FACT_${Date.now().toString().slice(-6)}`;
-      const sucObj = sucursales.find(s => s.id_sucursal === sedeDespacho);
+      const sucObj = sucursales.find(s => s.id_sucursal === sedeEfectiva);
 
       const ventaData = {
         id_cuenta: userAuth.id_cuenta,
         id_factura: idFactura,
         fecha: new Date().toISOString(),
         fecha_cobro: new Date().toISOString(),
-        id_bodega_despacho: sedeDespacho,
+        id_bodega_despacho: sedeEfectiva,
         nombre_bodega: sucObj ? (sucObj.nombre || sucObj.NOMBRE) : 'Sede Principal',
         vendedor_nombre: userAuth?.nombre || 'Cajero POS',
         vendedor_id: userAuth?.id_usuario || '',
@@ -319,13 +329,13 @@ export default function VentasPage() {
         const prodObj = productos.find(p => p.sku === item.sku);
         if (prodObj) {
           const currentStockMap = prodObj.stock || {};
-          const currentVal = Number(currentStockMap[sedeDespacho] || 0);
+          const currentVal = Number(currentStockMap[sedeEfectiva] || 0);
           const newVal = Math.max(0, currentVal - item.cantidad);
           
           await setDoc(prodRef, {
             stock: {
               ...currentStockMap,
-              [sedeDespacho]: newVal
+              [sedeEfectiva]: newVal
             }
           }, { merge: true });
         }
@@ -422,19 +432,20 @@ export default function VentasPage() {
            String(v.nombre_bodega || '').toLowerCase().includes(q);
   });
 
+  // DETERMINAR LA SEDE ACTIVA GARANTIZADA (EVITA EL VALOR EN BLANCO INICIAL)
+  const sucsActivas = sucursales.filter(s => s.estado !== 'INACTIVA');
+  const sedeGarantizada = sedeDespacho || (sucsActivas.length > 0 ? sucsActivas[0].id_sucursal : '');
+
   // FILTRADO DINÁMICO DE PRODUCTOS SEGÚN LA SEDE ACTIVA (> 0 UNIDADES)
   const productosPOS = productos.filter(p => {
     const q = searchProd.toLowerCase().trim();
     const matchSearch = String(p.nombre || '').toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q);
-    
-    // Obtener stock de la sede seleccionada en la caja
-    const stockEnSedeActiva = Number(p.stock?.[sedeDespacho] || 0);
+    const stockEnSedeActiva = Number(p.stock?.[sedeGarantizada] || 0);
 
-    // Solo mostrar productos que coincidan con la búsqueda Y tengan stock > 0 en la sede activa
     return matchSearch && stockEnSedeActiva > 0;
   });
 
-  const sedeActivaObj = sucursales.find(s => s.id_sucursal === sedeDespacho);
+  const sedeActivaObj = sucursales.find(s => s.id_sucursal === sedeGarantizada);
 
   return (
     <div className="min-h-screen bg-[#1D2935] text-slate-100 p-4 md:p-8 font-sans relative pb-20">
@@ -461,7 +472,7 @@ export default function VentasPage() {
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 000-4z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 00-2 2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <span>Caja Registrar (POS)</span>
           </button>
@@ -520,7 +531,7 @@ export default function VentasPage() {
             {/* GRID DE PRODUCTOS FILTRADOS POR LA SEDE SELECCIONADA */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
               {productosPOS.map((prod, idx) => {
-                const stockSede = Number(prod.stock?.[sedeDespacho] || 0);
+                const stockSede = Number(prod.stock?.[sedeGarantizada] || 0);
                 const tarifaIvaProd = prod.iva !== undefined ? Number(prod.iva) : 19;
 
                 return (
@@ -593,11 +604,11 @@ export default function VentasPage() {
 
               <select
                 className="bg-[#1D2935] border border-slate-700 text-xs font-satoshi-black text-[#0DE8C0] rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer shrink-0 disabled:opacity-60"
-                value={sedeDespacho}
+                value={sedeGarantizada}
                 onChange={(e) => setSedeDespacho(e.target.value)}
                 disabled={esVendedor}
               >
-                {sucursales.filter(s => s.estado !== 'INACTIVA').map((s, idx) => (
+                {sucsActivas.map((s, idx) => (
                   <option key={s.id_sucursal || idx} value={s.id_sucursal} className="bg-[#1D2935] text-white">
                     {s.nombre || s.NOMBRE}
                   </option>
@@ -619,7 +630,7 @@ export default function VentasPage() {
                   )}
                 </div>
 
-                {/* CANTIDAD MANUAL + BOTONES + Y - CON CONTROLES DE STOCK */}
+                {/* CANTIDAD MANUAL + BOTONES + Y - CON CLASES CSS PARA OCULTAR FLECHAS NATIVAS */}
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
                   {cart.map((item) => (
                     <div key={item.sku} className="bg-[#1D2935] rounded-xl p-2.5 border border-slate-700/60 flex items-center justify-between gap-2">
@@ -633,13 +644,13 @@ export default function VentasPage() {
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button type="button" onClick={() => updateQuantity(item.sku, -1)} className="w-6 h-6 bg-[#253443] text-white rounded-lg font-satoshi-black text-xs hover:bg-slate-700">-</button>
                         
-                        {/* CAMPO MANUAL DE CANTIDAD CON LÍMITE DE INVENTARIO */}
+                        {/* INPUT NUMÉRICO SIN FLECHAS NATIVAS DE NAVEGADOR */}
                         <input
                           type="number"
                           min="1"
                           value={item.cantidad}
                           onChange={(e) => handleQuantityManualChange(item.sku, Number(e.target.value))}
-                          className="w-12 bg-[#253443] border border-slate-700 rounded-lg text-center font-satoshi-black text-xs text-[#0DE8C0] py-0.5 focus:outline-none focus:border-[#0DE8C0]"
+                          className="w-12 bg-[#253443] border border-slate-700 rounded-lg text-center font-satoshi-black text-xs text-[#0DE8C0] py-0.5 focus:outline-none focus:border-[#0DE8C0] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
 
                         <button type="button" onClick={() => updateQuantity(item.sku, 1)} className="w-6 h-6 bg-[#253443] text-white rounded-lg font-satoshi-black text-xs hover:bg-slate-700">+</button>
@@ -685,7 +696,7 @@ export default function VentasPage() {
                       type="number"
                       min="0"
                       placeholder={tipoDescuento === 'PORCENTAJE' ? 'Ej: 10 %' : 'Ej: 5000 $'}
-                      className="bg-[#253443] border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none font-mono"
+                      className="bg-[#253443] border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       value={montoDescuento}
                       onChange={(e) => setMontoDescuento(e.target.value ? Number(e.target.value) : '')}
                     />
@@ -799,7 +810,7 @@ export default function VentasPage() {
                       <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">Paga Con ($)</label>
                       <input
                         type="number"
-                        className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2 text-white focus:outline-none font-mono"
+                        className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2 text-white focus:outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         value={montoPagaCon}
                         onChange={(e) => setMontoPagaCon(Number(e.target.value))}
                       />
