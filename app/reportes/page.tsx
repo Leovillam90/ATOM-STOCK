@@ -16,6 +16,8 @@ export default function ReportesPage() {
   const [anioFiltro, setAnioFiltro] = useState<number>(hoy.getFullYear());
 
   const [agruparPor, setAgruparPor] = useState<'SEDES' | 'VENDEDORES' | 'CANALES'>('SEDES');
+  // ESTADO PARA FILTRAR TOP PRODUCTOS POR SELECCIÓN
+  const [seleccionFiltroTop, setSeleccionFiltroTop] = useState<string | null>(null);
 
   const formatoCOP = (v: number) => 
     new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
@@ -36,6 +38,11 @@ export default function ReportesPage() {
       setUserAuth(JSON.parse(savedUser));
     }
   }, []);
+
+  // Resetear selección interactiva cuando cambia el tipo de agrupación o el periodo
+  useEffect(() => {
+    setSeleccionFiltroTop(null);
+  }, [agruparPor, mesFiltro, anioFiltro]);
 
   // Escuchar Firestore en Tiempo Real
   useEffect(() => {
@@ -86,19 +93,32 @@ export default function ReportesPage() {
   let totalUnidadesVendidas = 0;
   let totalIvaMontoAcumulado = 0;
 
-  // Cálculo de Unit Economics, Impuestos y Desglose P&L
+  // CÁLCULO DE UNIT ECONOMICS, IMPUESTOS Y FULFILLMENT E-COMMERCE (1 FULFILLMENT POR ORDEN)
   ventasEntregadasFiltradas.forEach(v => {
     totalIvaMontoAcumulado += Number(v.iva_monto) || 0;
 
-    // DETERMINAR SI LA VENTA ES DE CANAL E-COMMERCE
-    const origenStr = String(v.origen || v.canal_origen || '').toUpperCase();
+    // EVALUACIÓN DE CANAL E-COMMERCE
+    const origenStr = String(v.origen || v.canal_origen || v.tipo_tienda || '').toUpperCase();
     const vendedorStr = String(v.vendedor_nombre || '').toUpperCase();
-    const esEcommerce = origenStr.includes('ECOMMERCE') || 
-                        origenStr.includes('MASIVA') || 
-                        vendedorStr.includes('E-COMMERCE') || 
-                        vendedorStr.includes('DROPI') || 
-                        vendedorStr.includes('VENDELO') || 
-                        vendedorStr.includes('MASTER');
+    const tipoVentaStr = String(v.tipo_venta || '').toUpperCase();
+    const medioPagoStr = String(v.metodo_pago || v.medio_pago || '').toUpperCase();
+
+    const esEcommerce = 
+      v.es_ecommerce === true ||
+      origenStr.includes('ECOMMERCE') || 
+      origenStr.includes('E-COMMERCE') || 
+      origenStr.includes('MASIVA') || 
+      origenStr.includes('SHOPIFY') || 
+      origenStr.includes('WOOCOMMERCE') || 
+      origenStr.includes('INTEGRACION') || 
+      vendedorStr.includes('E-COMMERCE') || 
+      vendedorStr.includes('DROPI') || 
+      vendedorStr.includes('VENDELO') || 
+      vendedorStr.includes('MASTER') ||
+      tipoVentaStr.includes('ECOMMERCE') ||
+      medioPagoStr.includes('DROPI');
+
+    let maxFulfilmentOrden = 0;
 
     if (Array.isArray(v.items)) {
       v.items.forEach((it: any) => {
@@ -110,15 +130,20 @@ export default function ReportesPage() {
           const cImp = Number(prod.costo_importacion) || 0;
           const cFul = Number(prod.costo_fulfilment) || 0;
           
-          // COSTO DE COMPRA/FABRICACIÓN: Se aplica a todas las ventas
+          // Costo de compra/fabricación: acumulado por unidad vendida
           costoImportacionTotal += cImp * cant;
           
-          // COSTO DE FULFILLMENT: SOLO se aplica si la venta es por E-Commerce
-          if (esEcommerce) {
-            costoFulfilmentTotal += cFul * cant;
+          // Guardar el costo de fulfillment más representativo del producto de la orden
+          if (cFul > maxFulfilmentOrden) {
+            maxFulfilmentOrden = cFul;
           }
         }
       });
+    }
+
+    // SI LA ORDEN ES E-COMMERCE: SE APLICA 1 SOLO VALOR DE FULFILLMENT POR ORDEN COMPLETA
+    if (esEcommerce) {
+      costoFulfilmentTotal += maxFulfilmentOrden > 0 ? maxFulfilmentOrden : 8000;
     }
   });
 
@@ -152,9 +177,34 @@ export default function ReportesPage() {
     return acc + (cantStock * (costoUnit || (Number(p.precio) * 0.4)));
   }, 0);
 
-  // 3. AGRUPACIÓN DINÁMICA DE VENTAS (SEDES, VENDEDORES Y CANALES)
+  // Helper para clasificar canal
+  const obtenerCanalVenta = (v: any) => {
+    const origenStr = String(v.origen || v.canal_origen || v.tipo_tienda || '').toUpperCase();
+    const vendedorStr = String(v.vendedor_nombre || '').toUpperCase();
+    const bodegaStr = String(v.nombre_bodega || '').toUpperCase();
+
+    if (
+      v.es_ecommerce === true ||
+      origenStr.includes('ECOMMERCE') || 
+      origenStr.includes('E-COMMERCE') || 
+      origenStr.includes('MASIVA') || 
+      origenStr.includes('SHOPIFY') || 
+      vendedorStr.includes('E-COMMERCE') || 
+      vendedorStr.includes('DROPI') || 
+      vendedorStr.includes('VENDELO') || 
+      vendedorStr.includes('MASTER')
+    ) {
+      return 'E-Commerce';
+    } else if (origenStr.includes('BODEGA') || bodegaStr.includes('BODEGA') || bodegaStr.includes('ALMACEN') || bodegaStr.includes('DESPACHO')) {
+      return 'Bodegas';
+    } else {
+      return 'Tienda Física';
+    }
+  };
+
+  // 3. AGRUPACIÓN DINÁMICA DE VENTAS CON CONTEO DE PRODUCTOS / UNIDADES
   const obtenerAgrupacion = () => {
-    const mapa: { [key: string]: number } = {};
+    const mapa: { [key: string]: { monto: number; unidades: number; ordenes: number } } = {};
 
     ventasEntregadasFiltradas.forEach(v => {
       let clave = 'Sede Principal';
@@ -164,34 +214,54 @@ export default function ReportesPage() {
       } else if (agruparPor === 'VENDEDORES') {
         clave = v.vendedor_nombre || 'Vendedor POS';
       } else if (agruparPor === 'CANALES') {
-        const origenStr = String(v.origen || v.canal_origen || '').toUpperCase();
-        const vendedorStr = String(v.vendedor_nombre || '').toUpperCase();
-        const bodegaStr = String(v.nombre_bodega || '').toUpperCase();
-
-        if (origenStr.includes('ECOMMERCE') || origenStr.includes('MASIVA') || vendedorStr.includes('E-COMMERCE') || vendedorStr.includes('DROPI') || vendedorStr.includes('VENDELO') || vendedorStr.includes('MASTER')) {
-          clave = 'E-Commerce';
-        } else if (origenStr.includes('BODEGA') || bodegaStr.includes('BODEGA') || bodegaStr.includes('ALMACEN') || bodegaStr.includes('DESPACHO')) {
-          clave = 'Bodegas';
-        } else {
-          clave = 'Tienda Física';
-        }
+        clave = obtenerCanalVenta(v);
       }
 
-      mapa[clave] = (mapa[clave] || 0) + (Number(v.total) || 0);
+      if (!mapa[clave]) {
+        mapa[clave] = { monto: 0, unidades: 0, ordenes: 0 };
+      }
+
+      let undsVenta = 0;
+      if (Array.isArray(v.items)) {
+        undsVenta = v.items.reduce((acc: number, it: any) => acc + (Number(it.cantidad) || 1), 0);
+      }
+
+      mapa[clave].monto += Number(v.total) || 0;
+      mapa[clave].unidades += undsVenta;
+      mapa[clave].ordenes += 1;
     });
 
-    return Object.entries(mapa).map(([nombre, monto]) => ({
+    return Object.entries(mapa).map(([nombre, data]) => ({
       nombre,
-      monto,
-      porcentaje: totalVentasEntregadas > 0 ? Math.round((monto / totalVentasEntregadas) * 100) : 0
+      monto: data.monto,
+      unidades: data.unidades,
+      ordenes: data.ordenes,
+      porcentaje: totalVentasEntregadas > 0 ? Math.round((data.monto / totalVentasEntregadas) * 100) : 0
     })).sort((a, b) => b.monto - a.monto);
   };
 
-  // 4. RANKING TOP PRODUCTOS MÁS VENDIDOS
+  // 4. RANKING TOP PRODUCTOS REACCIONANTE A LA SELECCIÓN
   const obtenerTopProductos = () => {
     const mapaProd: { [key: string]: { cantidad: number; totalMonto: number; nombre: string } } = {};
 
-    ventasEntregadasFiltradas.forEach(v => {
+    // Filtrar las ventas si hay un filtro de agrupación seleccionado
+    const ventasParaTop = ventasEntregadasFiltradas.filter(v => {
+      if (!seleccionFiltroTop) return true;
+
+      if (agruparPor === 'SEDES') {
+        const nomSede = v.nombre_bodega || v.id_bodega_despacho || 'Sede Principal';
+        return nomSede.toLowerCase() === seleccionFiltroTop.toLowerCase();
+      } else if (agruparPor === 'VENDEDORES') {
+        const nomVend = v.vendedor_nombre || 'Vendedor POS';
+        return nomVend.toLowerCase() === seleccionFiltroTop.toLowerCase();
+      } else if (agruparPor === 'CANALES') {
+        const canal = obtenerCanalVenta(v);
+        return canal.toLowerCase() === seleccionFiltroTop.toLowerCase();
+      }
+      return true;
+    });
+
+    ventasParaTop.forEach(v => {
       if (Array.isArray(v.items)) {
         v.items.forEach((it: any) => {
           const skuKey = it.nombre ? it.nombre.toUpperCase() : (it.sku || 'PRODUCTO_SIN_NOMBRE');
@@ -458,10 +528,10 @@ export default function ReportesPage() {
 
       </div>
 
-      {/* GRÁFICOS Y COMPARATIVAS VISUALES */}
+      {/* GRÁFICOS Y COMPARATIVAS VISUALES CON INTERACTIVIDAD REACCIONANTE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
         
-        {/* DISTRIBUCIÓN POR AGRUPACIÓN (7 COLS) */}
+        {/* DISTRIBUCIÓN POR AGRUPACIÓN CON CONTEO DE PRODUCTOS Y SELECCIÓN HACIENDO CLICK (7 COLS) */}
         <div className="lg:col-span-7 bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl space-y-5">
           <div className="border-b border-slate-700/60 pb-3 flex justify-between items-center">
             <div>
@@ -469,7 +539,7 @@ export default function ReportesPage() {
                 Distribución por {agruparPor === 'SEDES' ? 'Sedes' : agruparPor === 'CANALES' ? 'Canales' : 'Vendedores'}
               </h2>
               <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
-                Aportación porcentual a las ventas en estado ENTREGADO
+                Haz clic en una opción para filtrar el Ranking de Top Productos en tiempo real.
               </p>
             </div>
 
@@ -512,27 +582,46 @@ export default function ReportesPage() {
             </div>
           </div>
 
-          <div className="space-y-4">
-            {agrupacionData.map((item, idx) => (
-              <div key={idx} className="space-y-1.5">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-satoshi-black text-white">{item.nombre}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-satoshi-black text-[#0DE8C0]">{formatoCOP(item.monto)}</span>
-                    <span className="text-[11px] font-mono text-[#0DE8C0] bg-[#1D2935] px-1.5 py-0.5 rounded">
-                      {item.porcentaje}%
-                    </span>
+          <div className="space-y-3">
+            {agrupacionData.map((item, idx) => {
+              const isSelected = seleccionFiltroTop?.toLowerCase() === item.nombre.toLowerCase();
+
+              return (
+                <div 
+                  key={idx} 
+                  onClick={() => setSeleccionFiltroTop(isSelected ? null : item.nombre)}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer select-none space-y-2 ${
+                    isSelected 
+                      ? 'bg-[#1D2935] border-[#0DE8C0] shadow-md shadow-[#0DE8C0]/10' 
+                      : 'bg-[#1D2935]/60 hover:bg-[#1D2935] border-slate-700/60'
+                  }`}
+                >
+                  <div className="flex justify-between items-center text-xs">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-[#0DE8C0] animate-pulse' : 'bg-slate-500'}`} />
+                      <span className="font-satoshi-black text-white truncate">{item.nombre}</span>
+                      <span className="text-[10px] text-[#A0AEC0] bg-[#253443] px-2 py-0.5 rounded-md border border-slate-700 font-mono">
+                        {item.unidades} productos ({item.ordenes} ops)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-satoshi-black text-[#0DE8C0]">{formatoCOP(item.monto)}</span>
+                      <span className="text-[11px] font-mono text-[#0DE8C0] bg-[#253443] px-1.5 py-0.5 rounded border border-slate-700">
+                        {item.porcentaje}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="w-full h-2.5 bg-[#253443] rounded-full overflow-hidden p-0.5 border border-slate-700/40">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#C81FDA] to-[#0DE8C0] transition-all duration-500"
+                      style={{ width: `${Math.max(item.porcentaje, 4)}%` }}
+                    ></div>
                   </div>
                 </div>
-
-                <div className="w-full h-3 bg-[#1D2935] rounded-full overflow-hidden p-0.5 border border-slate-700/40">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#C81FDA] to-[#0DE8C0] transition-all duration-500"
-                    style={{ width: `${Math.max(item.porcentaje, 4)}%` }}
-                  ></div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {agrupacionData.length === 0 && (
               <div className="text-center py-12 text-[#A0AEC0] text-xs font-satoshi-regular">
@@ -542,15 +631,29 @@ export default function ReportesPage() {
           </div>
         </div>
 
-        {/* RANKING TOP PRODUCTOS MÁS VENDIDOS (SÓLO ENTREGADOS - 5 COLS) */}
+        {/* RANKING TOP PRODUCTOS MÁS VENDIDOS REACCIÓN AL FILTRO INTERACTIVO (5 COLS) */}
         <div className="lg:col-span-5 bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl space-y-5">
-          <div className="border-b border-slate-700/60 pb-3">
-            <h2 className="text-base font-satoshi-black text-white uppercase tracking-wider">
-              Top Productos Más Vendidos
-            </h2>
-            <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
-              Ranking por cantidad de unidades vendidas (Solo ENTREGADO)
-            </p>
+          <div className="border-b border-slate-700/60 pb-3 flex justify-between items-center">
+            <div>
+              <h2 className="text-base font-satoshi-black text-white uppercase tracking-wider">
+                Top Productos
+              </h2>
+              <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
+                {seleccionFiltroTop 
+                  ? `Filtrado por: "${seleccionFiltroTop}"`
+                  : 'Ranking general de unidades vendidas'}
+              </p>
+            </div>
+
+            {seleccionFiltroTop && (
+              <button
+                type="button"
+                onClick={() => setSeleccionFiltroTop(null)}
+                className="text-[10px] font-satoshi-black text-[#0DE8C0] hover:underline bg-[#1D2935] px-2 py-1 rounded-lg border border-[#0DE8C0]/30"
+              >
+                ✕ Ver Todos
+              </button>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -586,7 +689,9 @@ export default function ReportesPage() {
 
             {topProductos.length === 0 && (
               <div className="text-center py-12 text-[#A0AEC0] text-xs font-satoshi-regular">
-                Sin productos en el ranking de ventas entregadas.
+                {seleccionFiltroTop 
+                  ? `Sin productos registrados para "${seleccionFiltroTop}".`
+                  : 'Sin productos en el ranking de ventas entregadas.'}
               </div>
             )}
           </div>
