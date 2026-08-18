@@ -129,7 +129,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       setUserAuth(sessionObj);
       localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
 
-      // REDIRECCIÓN INTELIGENTE SEGÚN EL ROL
       if (userRol === 'ADMIN') {
         router.push('/reportes');
       } else if (userRol === 'GERENTE_BODEGA') {
@@ -154,6 +153,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const esCuentaNueva = numSucursales === 0 && numProductos === 0;
   const rolActual = userAuth?.rol || 'ADMIN';
 
+  // CONFIGURACIÓN DE PILL BADGES CON ROJO NEÓN CLARO ATOM (#FF0055)
   const menuItems = [
     {
       label: 'Reportes / Analytics',
@@ -173,8 +173,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       disabled: false,
       rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA'],
       badge: numSucursales === 0 ? (
-        <span className="bg-[#C81FDA]/15 text-[#C81FDA] border border-[#C81FDA]/40 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
-          ! Ingresar
+        <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider ml-auto shrink-0 inline-block text-center select-none shadow-none">
+          ! INGRESAR
         </span>
       ) : null,
       icon: (
@@ -189,8 +189,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       disabled: false,
       rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA', 'VENDEDOR'],
       badge: numProductos === 0 ? (
-        <span className="bg-red-950/60 text-red-400 border border-red-800/40 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-          Sin datos
+        <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider ml-auto shrink-0 inline-block text-center select-none shadow-none">
+          SIN DATOS
         </span>
       ) : null,
       icon: (
@@ -241,8 +241,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       disabled: false,
       rolesPermitidos: ['ADMIN'],
       badge: numVendedores === 0 || numVendedores === 1 ? (
-        <span className="bg-amber-950/60 text-amber-300 border border-amber-800/40 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-          + Añadir
+        <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider ml-auto shrink-0 inline-block text-center select-none shadow-none">
+          + AÑADIR
         </span>
       ) : null,
       icon: (
@@ -257,7 +257,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       disabled: true,
       rolesPermitidos: ['ADMIN'],
       badge: (
-        <span className="bg-[#6884C5]/20 text-[#6884C5] border border-[#6884C5]/40 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+        <span className="bg-[#374151] text-[#9CA3AF] text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider ml-auto shrink-0 inline-block text-center select-none shadow-none">
           PROX.
         </span>
       ),
@@ -284,16 +284,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     );
   }
 
-  /* -------------------------------------------------------------------------- */
-  /* PANTALLA DE LOGIN UNIFICADA CON LA PALETA DE ATOM STOCK                    */
-  /* -------------------------------------------------------------------------- */
   if (!userAuth) {
     return (
       <html lang="es">
         <body className="bg-[#1D2935] min-h-screen text-slate-100 antialiased font-sans select-none flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-[#253443] border border-slate-700/60 p-8 rounded-2xl shadow-2xl space-y-6">
             
-            {/* CABECERA CON LOGO Y ESTILOS DE LA SUITE */}
             <div className="text-center">
               <h1 className="text-3xl font-black text-white font-satoshi-black">
                 ATOM <span className="text-[#0DE8C0]">STOCK</span>
@@ -306,8 +302,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
-              
-              {/* CAMPO DE NOMBRE COMPLETO (Solo visible al registrarse) */}
               {isRegister && (
                 <div>
                   <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
@@ -324,7 +318,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
               )}
 
-              {/* CAMPO DE USUARIO / CORREO */}
               <div>
                 <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
                   Usuario / Correo <span className="text-rose-500">*</span>
@@ -339,7 +332,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 />
               </div>
 
-              {/* CAMPO DE CONTRASEÑA */}
               <div>
                 <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
                   Contraseña <span className="text-rose-500">*</span>
@@ -373,7 +365,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
               </div>
 
-              {/* OPCIONES SECUNDARIAS (RECORDAR SESIÓN Y RECUPERACIÓN) */}
               {!isRegister && (
                 <div className="flex items-center justify-between text-xs pt-1 font-satoshi-regular">
                   <label className="flex items-center text-slate-400 cursor-pointer select-none">
@@ -385,50 +376,33 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     />
                     Recordar sesión
                   </label>
-                  <button
-                    type="button"
-                    className="text-slate-400 hover:text-[#0DE8C0] transition"
-                  >
+                  <button type="button" className="text-slate-400 hover:text-[#0DE8C0] transition">
                     ¿Olvidaste tu contraseña?
                   </button>
                 </div>
               )}
 
-              {/* BOTÓN PRINCIPAL CON COLOR TURQUESA #0DE8C0 DE LA MARCA */}
               <button
                 type="submit"
                 disabled={loadingAction}
                 className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3.5 rounded-xl text-xs uppercase tracking-wider transition duration-300 shadow-lg disabled:opacity-50"
               >
-                {loadingAction
-                  ? 'Validando Acceso...'
-                  : isRegister
-                  ? 'Registrarse'
-                  : 'Ingresar'}
+                {loadingAction ? 'Validando Acceso...' : isRegister ? 'Registrarse' : 'Ingresar'}
               </button>
             </form>
 
-            {/* OPCIÓN PARA CAMBIAR ENTRE LOGIN Y REGISTRO */}
             <div className="text-center text-xs text-slate-400 font-satoshi-regular pt-2">
               {isRegister ? (
                 <span>
                   ¿Ya tienes una cuenta?{' '}
-                  <button
-                    type="button"
-                    onClick={() => setIsRegister(false)}
-                    className="text-[#0DE8C0] font-satoshi-black hover:underline ml-1"
-                  >
+                  <button type="button" onClick={() => setIsRegister(false)} className="text-[#0DE8C0] font-satoshi-black hover:underline ml-1">
                     Inicia sesión
                   </button>
                 </span>
               ) : (
                 <span>
                   ¿No tienes una cuenta?{' '}
-                  <button
-                    type="button"
-                    onClick={() => setIsRegister(true)}
-                    className="text-[#0DE8C0] font-satoshi-black hover:underline ml-1"
-                  >
+                  <button type="button" onClick={() => setIsRegister(true)} className="text-[#0DE8C0] font-satoshi-black hover:underline ml-1">
                     Regístrate
                   </button>
                 </span>
@@ -441,9 +415,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     );
   }
 
-  /* -------------------------------------------------------------------------- */
-  /* PANEL PRINCIPAL DASHBOARD (MANTIENE LA ESTRUCTURA IDENTICA ORIGINAL)        */
-  /* -------------------------------------------------------------------------- */
   let pasocumplidoCount = 0;
   if (numSucursales && numSucursales > 0) pasocumplidoCount++;
   if (numProductos && numProductos > 0) pasocumplidoCount++;
@@ -544,7 +515,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </button>
 
             {showUserPopover && (
-              <div className="absolute bottom-16 left-0 right-0 bg-[#253443] border border-slate-700 rounded-2xl p-3 shadow-2xl z-50 space-y-2 animate-in fade-in slide-in-from-bottom-2">
+              <div className="absolute bottom-16 left-0 right-0 bg-[#253443] border border-slate-700 rounded-2xl p-3 shadow-2xl z-50 space-y-2 animate-in fade-in">
                 <div className="p-2 border-b border-slate-700/60">
                   <p className="text-[10px] font-satoshi-black text-slate-400 uppercase">Cuenta de Acceso</p>
                   <p className="text-xs font-satoshi-regular text-white truncate">{userAuth?.user}</p>
@@ -581,8 +552,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="flex-1 overflow-y-auto">
           {esCuentaNueva && pathname === '/reportes' && rolActual === 'ADMIN' ? (
             <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-8 animate-in fade-in">
-              
-              {/* CABECERA WIZARD DE BIENVENIDA */}
               <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-[#0DE8C0]/10 blur-3xl pointer-events-none rounded-full"></div>
                 <h1 className="text-3xl font-black text-white font-satoshi-black tracking-tight">
@@ -592,7 +561,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   Completa estos sencillos pasos para activar tu sistema de inventario y terminal POS multibodega.
                 </p>
 
-                {/* BARRA DE PROGRESO */}
                 <div className="mt-6 pt-4 border-t border-slate-700/60 space-y-2">
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
@@ -611,18 +579,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
               </div>
 
-              {/* TARJETAS DE PASOS RÁPIDOS */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* PASO 1: CREAR SUCURSAL */}
                 <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4 relative">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <span className="w-8 h-8 rounded-xl bg-[#0DE8C0]/10 text-[#0DE8C0] font-satoshi-black flex items-center justify-center text-xs">
                         1
                       </span>
-                      <span className="bg-[#C81FDA]/20 text-[#C81FDA] border border-[#C81FDA]/40 text-[9px] font-satoshi-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        Requerido
+                      <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                        ! INGRESAR
                       </span>
                     </div>
                     <h3 className="font-satoshi-black text-base text-white uppercase tracking-wide">
@@ -641,15 +606,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </Link>
                 </div>
 
-                {/* PASO 2: AGREGAR PRODUCTOS */}
                 <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <span className="w-8 h-8 rounded-xl bg-[#6884C5]/10 text-[#6884C5] font-satoshi-black flex items-center justify-center text-xs">
                         2
                       </span>
-                      <span className="bg-slate-800 text-slate-400 text-[9px] font-satoshi-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        Paso 2
+                      <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                        SIN DATOS
                       </span>
                     </div>
                     <h3 className="font-satoshi-black text-base text-white uppercase tracking-wide">
@@ -676,15 +640,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </div>
                 </div>
 
-                {/* PASO 3: EQUIPO / VENDEDORES */}
                 <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <span className="w-8 h-8 rounded-xl bg-[#C81FDA]/10 text-[#C81FDA] font-satoshi-black flex items-center justify-center text-xs">
                         3
                       </span>
-                      <span className="bg-slate-800 text-slate-400 text-[9px] font-satoshi-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        Opcional
+                      <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                        + AÑADIR
                       </span>
                     </div>
                     <h3 className="font-satoshi-black text-base text-white uppercase tracking-wide">
@@ -702,9 +665,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <span>+ Añadir Vendedor</span>
                   </Link>
                 </div>
-
               </div>
-
             </div>
           ) : (
             children
