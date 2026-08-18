@@ -106,25 +106,25 @@ export default function FacturasPage() {
   const totalEmitidasMes = facturasPorMesYAnio.filter(f => (f.estado || 'PAGADA') !== 'ANULADA').length;
   const totalAnuladasMes = facturasPorMesYAnio.filter(f => f.estado === 'ANULADA').length;
 
-  // DESCARGAR PLANTILLA CSV DE EJEMPLO
+  // DESCARGAR PLANTILLA COMPLETA DE FACTURACIÓN ELECTRÓNICA DIAN
   const handleDescargarPlantilla = () => {
     const bom = '\uFEFF';
-    let csv = 'ORDEN_ID;CANAL;CLIENTE_NOMBRE;CLIENTE_NIT;CLIENTE_CORREO;PRODUCTO;CANTIDAD;SUBTOTAL;IVA_PORCENTAJE;METODO_PAGO\n';
-    csv += 'DROP-1001;DROPI;Pedro;1098765432;pedro@correo.com;Teclado Mecanico RGB;1;85000;19;CONTRAENTREGA\n';
-    csv += 'VEN-5502;VENDELO;Maria Gomez;52987654;maria@correo.com;Mouse Inalambrico;2;120000;19;PASARELA_PAYU\n';
-    csv += 'MST-8821;MASTER;Carlos Ruiz;1018234567;carlos@correo.com;Audifonos Pro;1;45000;0;EFECTIVO\n';
+    let csv = 'ORDEN_ID;CANAL;TIPO_DOCUMENTO;CLIENTE_NIT;CLIENTE_NOMBRE;CLIENTE_CORREO;CLIENTE_TELEFONO;CLIENTE_DIRECCION;CLIENTE_CIUDAD;RESPONSABILIDAD_FISCAL;PRODUCTO;CANTIDAD;PRECIO_UNITARIO;IVA_PORCENTAJE;METODO_PAGO\n';
+    csv += 'DROP-1001;DROPI;13;1098765432;Pedro Gomez;pedro@correo.com;3101234567;Calle 10 # 15-20;Cali - Valle;R-99-PN;Teclado Mecanico RGB;1;85000;19;CONTRAENTREGA\n';
+    csv += 'VEN-5502;VENDELO;31;901234567;Tienda Ejemplo SAS;compras@ejemplo.com;3209876543;Av 6 Norte # 24-00;Medellin - Antioquia;O-48;Mouse Inalambrico;2;60000;19;PASARELA_PAYU\n';
+    csv += 'MST-8821;MASTER;13;1018234567;Carlos Ruiz;carlos@correo.com;3005554433;Carrera 5 # 12-30;Bogota D.C.;R-99-PN;Audifonos Pro;1;45000;0;EFECTIVO\n';
 
     const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'Plantilla_Facturacion_Masiva_Ecommerce.csv');
+    link.setAttribute('download', 'Plantilla_Facturacion_Electronica_DIAN_Masiva.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // PROCESAR Y CARGAR ARCHIVO CSV MASIVO
+  // PROCESAR Y CARGAR ARCHIVO CSV MASIVO CON CAMPOS DE FACTURACIÓN ELECTRÓNICA
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!archivoCSV) return alert('Selecciona un archivo CSV para procesar.');
@@ -147,34 +147,52 @@ export default function FacturasPage() {
 
         for (let i = 1; i < lineas.length; i++) {
           const columnas = lineas[i].split(';');
-          if (columnas.length >= 8) {
+          if (columnas.length >= 10) {
             const ordenId = columnas[0] || `ORD-${Date.now().toString().slice(-4)}`;
             const canal = columnas[1] || canalPlataforma;
-            const cliente = columnas[2] || 'Pedro';
+            const tipoDoc = columnas[2] || '13'; // 13: Cédula, 31: NIT
             const nit = columnas[3] || '222222222222';
-            const correo = columnas[4] || 'factura@ecom.com';
-            const productoNombre = columnas[5] || 'Producto E-Commerce';
-            const cantidadNum = Number(columnas[6]) || 1;
-            const subtotal = Number(columnas[7]) || 0;
-            const ivaPct = Number(columnas[8]) || 19;
-            const metodo = columnas[9] || 'CONTRAENTREGA';
+            const cliente = columnas[4] || 'Consumidor Final';
+            const correo = columnas[5] || 'facturacion@ecom.com';
+            const telefono = columnas[6] || 'N/A';
+            const direccion = columnas[7] || 'Ciudad Principal';
+            const ciudad = columnas[8] || 'Cali';
+            const respFiscal = columnas[9] || 'R-99-PN';
 
+            const productoNombre = columnas[10] || 'Producto E-Commerce';
+            const cantidadNum = Number(columnas[11]) || 1;
+            const precioUnitario = Number(columnas[12]) || 0;
+            const ivaPct = Number(columnas[13]) || 19;
+            const metodo = columnas[14] || 'CONTRAENTREGA';
+
+            const subtotal = cantidadNum * precioUnitario;
             const ivaMonto = (subtotal * ivaPct) / 100;
             const total = subtotal + ivaMonto;
-            
+
+            // GENERACIÓN AUTOMÁTICA DEL CONSECUTIVO DE FACTURA ELECTRONICA
             const idFacturaGen = `FE-${canal.toUpperCase().slice(0,3)}-${Math.floor(100000 + Math.random() * 900000)}`;
 
             const nuevaFactura = {
               id_cuenta: userAuth?.id_cuenta || 'DEMO_123',
               id_factura: idFacturaGen,
+              
+              // ESTRUCTURA DATOS CLIENTE DIAN
               cliente_nombre: cliente,
               cliente_nit: nit,
+              cliente_tipo_doc: tipoDoc,
               cliente_correo: correo,
+              cliente_telefono: telefono,
+              cliente_direccion: direccion,
+              cliente_ciudad: ciudad,
+              cliente_responsabilidad_fiscal: respFiscal,
+
               vendedor_nombre: `E-Commerce (${canal})`,
               vendedor_id: 'BOT_INTEGRACION',
               nombre_bodega: `Despacho ${canal}`,
+
               subtotal,
               iva_monto: ivaMonto,
+              iva_porcentaje: ivaPct,
               total,
               metodo_pago: metodo,
               orden_referencia: ordenId,
@@ -186,7 +204,8 @@ export default function FacturasPage() {
                 {
                   nombre: productoNombre,
                   cantidad: cantidadNum,
-                  precio: cantidadNum > 0 ? subtotal / cantidadNum : subtotal
+                  precio: precioUnitario,
+                  tarifaIva: ivaPct
                 }
               ]
             };
@@ -196,7 +215,7 @@ export default function FacturasPage() {
           }
         }
 
-        alert(`¡Éxito! Se crearon ${importadosCount} números de factura y se asociaron sus órdenes.`);
+        alert(`¡Éxito! Se crearon e indexaron ${importadosCount} facturas electrónicas masivas.`);
         setShowModalEcommerce(false);
         setArchivoCSV(null);
       } catch (err: any) {
@@ -209,7 +228,7 @@ export default function FacturasPage() {
     reader.readAsText(archivoCSV);
   };
 
-  // EXPORTAR CONSOLIDADO MASIVO COMPATIBLE CON SISTEMAS CONTABLES
+  // EXPORTAR CONSOLIDADO MASIVO COMPATIBLE CON SOFTWARE CONTABLE Y DIAN
   const handleExportarReporteFiscal = () => {
     if (facturasFiltradas.length === 0) {
       return alert('No hay comprobantes registrados para exportar.');
@@ -217,19 +236,25 @@ export default function FacturasPage() {
 
     const bom = '\uFEFF';
     let csvContent = 'SEP=;\n';
-    csvContent += 'NUM_COMPROBANTE;ORDEN_REF;FECHA_EMISION;CLIENTE_NOMBRE;NIT_RUT;CORREO_CLIENTE;PRODUCTO;CANTIDAD;METODO_PAGO;CANAL_ORIGEN;SUBTOTAL;IVA_MONTO;TOTAL_CON_IMPUESTO;ESTADO_FISCAL\n';
+    csvContent += 'NUM_COMPROBANTE;ORDEN_REF;FECHA_EMISION;TIPO_DOC;NIT_RUT;CLIENTE_NOMBRE;CORREO_CLIENTE;TELEFONO;DIRECCION;CIUDAD;RESPONSABILIDAD_FISCAL;PRODUCTO;CANTIDAD;PRECIO_UNITARIO;METODO_PAGO;CANAL_ORIGEN;SUBTOTAL;IVA_MONTO;TOTAL_CON_IMPUESTO;ESTADO_FISCAL\n';
 
     facturasFiltradas.forEach(f => {
       const fNum = f.id_factura || 'N/A';
       const fOrden = f.orden_referencia || 'N/A';
       const fFecha = f.fecha_cobro || f.fecha ? new Date(f.fecha_cobro || f.fecha).toISOString() : 'N/A';
-      const fCliente = (f.cliente_nombre || 'Pedro').replace(/;/g, ' ');
+      const fTipoDoc = f.cliente_tipo_doc || '13';
       const fNit = f.cliente_nit || 'CF_GENERAL';
+      const fCliente = (f.cliente_nombre || 'Consumidor Final').replace(/;/g, ' ');
       const fMail = f.cliente_correo || 'N/A';
-      
+      const fTel = f.cliente_telefono || 'N/A';
+      const fDir = (f.cliente_direccion || 'N/A').replace(/;/g, ' ');
+      const fCiu = (f.cliente_ciudad || 'Cali').replace(/;/g, ' ');
+      const fResp = f.cliente_responsabilidad_fiscal || 'R-99-PN';
+
       const primerItem = Array.isArray(f.items) && f.items.length > 0 ? f.items[0] : null;
       const fProd = (primerItem?.nombre || 'Producto E-Commerce').replace(/;/g, ' ');
       const fCant = primerItem?.cantidad || 1;
+      const fPrecio = primerItem?.precio || f.total || 0;
 
       const fMetodo = f.metodo_pago || 'CONTRAENTREGA';
       const fCanal = (f.vendedor_nombre || 'E-Commerce Bot').replace(/;/g, ' ');
@@ -238,7 +263,7 @@ export default function FacturasPage() {
       const fTot = f.total || 0;
       const fEst = f.estado || 'EMITIDA';
 
-      csvContent += `${fNum};${fOrden};${fFecha};${fCliente};${fNit};${fMail};${fProd};${fCant};${fMetodo};${fCanal};${fSub};${fIva};${fTot};${fEst}\n`;
+      csvContent += `${fNum};${fOrden};${fFecha};${fTipoDoc};${fNit};${fCliente};${fMail};${fTel};${fDir};${fCiu};${fResp};${fProd};${fCant};${fPrecio};${fMetodo};${fCanal};${fSub};${fIva};${fTot};${fEst}\n`;
     });
 
     const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -246,7 +271,7 @@ export default function FacturasPage() {
     const link = document.createElement('a');
     link.href = url;
     const nombreMes = mesesDelAnio[mesFiltro].nombre;
-    link.setAttribute('download', `Consolidado_Contable_Facturas_${nombreMes}_${anioFiltro}.csv`);
+    link.setAttribute('download', `Consolidado_Facturacion_Electronica_DIAN_${nombreMes}_${anioFiltro}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -261,14 +286,14 @@ export default function FacturasPage() {
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2 h-2 rounded-full bg-[#0DE8C0] animate-pulse"></span>
             <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
-              {esVendedor ? `Comprobantes Emitidos por ${userAuth?.nombre}` : 'Control Fiscal & Integración E-Commerce'}
+              {esVendedor ? `Comprobantes Emitidos por ${userAuth?.nombre}` : 'Control Fiscal & Integración E-Commerce DIAN'}
             </span>
           </div>
           <h1 className="text-3xl font-black text-white tracking-tight font-satoshi-black">
             Facturación
           </h1>
           <p className="text-xs text-[#A0AEC0] mt-1 font-satoshi-regular max-w-xl">
-            Carga masiva con generación automática de facturas y exportación contable completa.
+            Carga masiva completa con datos fiscales del cliente, IVA discriminado y exportación contable.
           </p>
         </div>
 
@@ -391,6 +416,7 @@ export default function FacturasPage() {
               <th className="p-4">Orden Ref.</th>
               <th className="p-4">Plataforma</th>
               <th className="p-4">Cliente / NIT / Correo</th>
+              <th className="p-4">Dirección & Ciudad</th>
               <th className="p-4">Producto & Cant.</th>
               <th className="p-4 text-right">Monto Total</th>
               <th className="p-4 text-center">Acciones</th>
@@ -406,9 +432,13 @@ export default function FacturasPage() {
                   <td className="p-4 font-mono text-[#0DE8C0]">{f.orden_referencia || 'N/A'}</td>
                   <td className="p-4 font-satoshi-black text-slate-200">{f.vendedor_nombre}</td>
                   <td className="p-4">
-                    <div className="font-satoshi-black text-white">{f.cliente_nombre || 'Pedro'}</div>
+                    <div className="font-satoshi-black text-white">{f.cliente_nombre || 'Consumidor Final'}</div>
                     <div className="text-[10px] text-slate-400">NIT: {f.cliente_nit || 'N/A'}</div>
                     <div className="text-[10px] text-[#A0AEC0]">{f.cliente_correo || 'N/A'}</div>
+                  </td>
+                  <td className="p-4">
+                    <div className="text-slate-300 truncate max-w-xs">{f.cliente_direccion || 'N/A'}</div>
+                    <div className="text-[10px] text-slate-400">{f.cliente_ciudad || 'Cali'}</div>
                   </td>
                   <td className="p-4">
                     <div className="font-satoshi-black text-slate-200 truncate max-w-xs">{item?.nombre || 'Producto E-Commerce'}</div>
@@ -428,14 +458,14 @@ export default function FacturasPage() {
             })}
             {facturasFiltradas.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-slate-400">No hay facturas registradas en este periodo. Usa el botón "Subir Archivo Masivo" para cargar tus pedidos.</td>
+                <td colSpan={8} className="p-8 text-center text-slate-400">No hay facturas registradas en este periodo. Usa el botón "Subir Archivo Masivo" para cargar tus pedidos.</td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* MODAL CARGA MASIVA (DROPI / VÉNDELO / MASTER) CON ÍCONO 2D EN LUGAR DE EMOJI */}
+      {/* MODAL CARGA MASIVA (DROPI / VÉNDELO / MASTER) */}
       {showModalEcommerce && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 p-6 rounded-2xl max-w-md w-full space-y-4 shadow-2xl text-xs text-white">
@@ -444,7 +474,7 @@ export default function FacturasPage() {
                 <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
-                <span>Importación Masiva (Dropi / Véndelo / Master)</span>
+                <span>Importación Masiva DIAN (Dropi / Véndelo / Master)</span>
               </h2>
               <button onClick={() => setShowModalEcommerce(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
@@ -466,17 +496,17 @@ export default function FacturasPage() {
 
               <div className="p-3 bg-[#1D2935] rounded-xl border border-slate-700/60 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="font-satoshi-black text-slate-300">¿No tienes la plantilla?</span>
+                  <span className="font-satoshi-black text-slate-300">¿No tienes la plantilla DIAN?</span>
                   <button
                     type="button"
                     onClick={handleDescargarPlantilla}
                     className="text-[#0DE8C0] font-satoshi-black hover:underline"
                   >
-                    Descargar CSV de Ejemplo
+                    Descargar Plantilla CSV
                   </button>
                 </div>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Descarga nuestro formato base con columnas para Cliente, NIT/RUT, Correo, Producto, Cantidad y Método de Pago.
+                  Incluye columnas de Tipo Doc, Dirección, Ciudad, Teléfono, Responsabilidad Fiscal e IVA.
                 </p>
               </div>
 
@@ -513,23 +543,27 @@ export default function FacturasPage() {
         </div>
       )}
 
-      {/* MODAL DETALLE / COMPROBANTE FISCAL */}
+      {/* MODAL DETALLE / COMPROBANTE FISCAL CON DATOS COMPLETOS DIAN */}
       {showModalDetail && selectedFactura && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white text-slate-900 rounded-2xl w-full max-w-sm p-6 shadow-2xl font-mono text-xs relative space-y-4">
             <button onClick={() => setShowModalDetail(false)} className="absolute right-4 top-4 text-slate-400 hover:text-slate-800">✕</button>
 
             <div className="text-center border-b border-dashed border-slate-300 pb-3 space-y-1">
-              <h2 className="font-bold text-base uppercase">FACTURA / COMPROBANTE</h2>
+              <h2 className="font-bold text-base uppercase">FACTURA / COMPROBANTE FISCAL</h2>
               <p className="text-[10px] text-slate-600">{selectedFactura.vendedor_nombre}</p>
               <p className="text-[10px] text-slate-500">N° {selectedFactura.id_factura}</p>
               <p className="text-[10px] text-slate-500">Ref Orden: {selectedFactura.orden_referencia || 'N/A'}</p>
             </div>
 
             <div className="border-b border-dashed border-slate-300 pb-2 text-[10px] space-y-0.5">
-              <p>CLIENTE: <span className="font-bold">{selectedFactura.cliente_nombre || 'Pedro'}</span></p>
-              <p>NIT/RUT: {selectedFactura.cliente_nit || 'N/A'}</p>
+              <p>CLIENTE: <span className="font-bold">{selectedFactura.cliente_nombre || 'Consumidor Final'}</span></p>
+              <p>NIT/CC: {selectedFactura.cliente_nit || 'N/A'} (Tipo: {selectedFactura.cliente_tipo_doc || '13'})</p>
               <p>CORREO: {selectedFactura.cliente_correo || 'N/A'}</p>
+              <p>TELÉFONO: {selectedFactura.cliente_telefono || 'N/A'}</p>
+              <p>DIRECCIÓN: {selectedFactura.cliente_direccion || 'N/A'}</p>
+              <p>CIUDAD: {selectedFactura.cliente_ciudad || 'Cali'}</p>
+              <p>RESP. FISCAL: {selectedFactura.cliente_responsabilidad_fiscal || 'R-99-PN'}</p>
               <p>MÉTODO: {selectedFactura.metodo_pago || 'CONTRAENTREGA'}</p>
             </div>
 
@@ -538,7 +572,7 @@ export default function FacturasPage() {
                 <div key={i} className="flex justify-between items-start text-[11px] mb-1">
                   <div>
                     <div className="font-bold">{it.nombre}</div>
-                    <div className="text-[9px] text-slate-500">Cant: {it.cantidad} x {formatoCOP(it.precio)}</div>
+                    <div className="text-[9px] text-slate-500">Cant: {it.cantidad} x {formatoCOP(it.precio)} (IVA {it.tarifaIva || 19}%)</div>
                   </div>
                   <span className="font-bold">{formatoCOP(it.cantidad * it.precio)}</span>
                 </div>
@@ -546,6 +580,14 @@ export default function FacturasPage() {
             </div>
 
             <div className="space-y-1 pt-1 text-right">
+              <div className="flex justify-between text-[11px] text-slate-600">
+                <span>Subtotal Gravable:</span>
+                <span>{formatoCOP(selectedFactura.subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-[11px] text-slate-600">
+                <span>IVA Discriminado:</span>
+                <span>{formatoCOP(selectedFactura.iva_monto)}</span>
+              </div>
               <div className="flex justify-between text-sm font-black pt-1 border-t border-slate-900">
                 <span>TOTAL:</span>
                 <span>{formatoCOP(selectedFactura.total)}</span>
