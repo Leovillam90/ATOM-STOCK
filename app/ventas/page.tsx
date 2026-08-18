@@ -301,8 +301,11 @@ export default function VentasPage() {
         vendedor_nombre: userAuth?.nombre || 'Cajero POS',
         vendedor_id: userAuth?.id_usuario || '',
         cliente_nombre: clienteSelObj.nombre,
-        cliente_nit: clienteSelObj.nit,
-        cliente_correo: clienteSelObj.correo || 'cliente@general.com',
+        cliente_nit: clienteSelObj.nit || 'CF_GENERAL',
+        cliente_correo: clienteSelObj.email || clienteSelObj.correo || 'cliente@general.com',
+        cliente_telefono: clienteSelObj.telefono || 'N/A',
+        cliente_direccion: clienteSelObj.direccion || 'N/A',
+        cliente_ciudad: clienteSelObj.ciudad || 'Cali',
         items: cart,
         metodo_pago: metodoPago,
         
@@ -472,7 +475,7 @@ export default function VentasPage() {
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 00-2 2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 00-4zm-8 2a2 2 0 00-2 2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <span>Caja Registrar (POS)</span>
           </button>
@@ -710,7 +713,7 @@ export default function VentasPage() {
                   </div>
                 </div>
 
-                {/* BUSCADOR DE CLIENTES CON DOWPDOWN INTELIGENTE */}
+                {/* BUSCADOR DE CLIENTES CORREGIDO: AUTO-LIMPIEZA AL HACER FOCUS Y DESPLEGABLE HACIA ABAJO */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative" ref={clienteRef}>
                     <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">Buscar Cliente</label>
@@ -719,16 +722,23 @@ export default function VentasPage() {
                       placeholder="Nombre o Cédula..."
                       className="w-full bg-[#1D2935] border border-slate-700 text-xs text-white rounded-xl p-2 focus:outline-none focus:border-[#0DE8C0] font-satoshi-black"
                       value={clienteSearch || clienteSelObj.nombre}
-                      onFocus={() => setShowClienteDropdown(true)}
+                      onFocus={() => {
+                        if (clienteSelObj.nit === 'CF_GENERAL') {
+                          setClienteSearch('');
+                        } else {
+                          setClienteSearch(clienteSelObj.nombre);
+                        }
+                        setShowClienteDropdown(true);
+                      }}
                       onChange={(e) => {
                         setClienteSearch(e.target.value);
                         setShowClienteDropdown(true);
                       }}
                     />
 
-                    {/* POPUP DE SELECCIÓN DE CLIENTE */}
+                    {/* POPUP DE SELECCIÓN DE CLIENTE DESPLEGABLE HACIA ABAJO (TOP-FULL Z-[100]) */}
                     {showClienteDropdown && (
-                      <div className="absolute left-0 right-0 bottom-full mb-1 bg-[#1D2935] border border-slate-700 rounded-xl shadow-2xl max-h-48 overflow-y-auto z-50 divide-y divide-slate-800 text-xs">
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-[#1D2935] border border-slate-700 rounded-xl shadow-2xl max-h-48 overflow-y-auto z-[100] divide-y divide-slate-800 text-xs">
                         <div
                           onClick={() => {
                             setClienteSelObj({ nit: 'CF_GENERAL', nombre: 'Consumidor Final (CF)' });
@@ -945,73 +955,107 @@ export default function VentasPage() {
         </div>
       )}
 
-      {/* MODAL TICKET */}
+      {/* MODAL COMPROBANTE FISCAL / TICKET TIPO PAPEL TÉRMICO */}
       {showTicketModal && selectedVentaTicket && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-[#253443] border border-slate-700/80 text-slate-200 rounded-2xl w-full max-w-sm p-6 shadow-2xl font-mono text-xs relative space-y-4">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white text-slate-900 rounded-3xl w-full max-w-md p-8 shadow-2xl font-mono text-xs relative space-y-5 border border-slate-200">
             
-            <button onClick={() => setShowTicketModal(false)} className="absolute right-4 top-4 text-slate-400 hover:text-white">✕</button>
+            <button 
+              onClick={() => setShowTicketModal(false)} 
+              className="absolute right-5 top-5 text-slate-400 hover:text-slate-700 transition"
+            >
+              ✕
+            </button>
 
-            <div className="text-center border-b border-dashed border-slate-700 pb-3 space-y-1">
-              <h2 className="font-bold text-base tracking-widest text-[#0DE8C0] uppercase font-satoshi-black">
-                ATOM STOCK POS
+            {/* ENCABEZADO DEL COMPROBANTE */}
+            <div className="text-center space-y-1">
+              <h2 className="font-satoshi-black font-black text-lg tracking-wider text-slate-900 uppercase">
+                FACTURA / COMPROBANTE FISCAL
               </h2>
-              <p className="text-[11px] text-slate-300 font-satoshi-regular">{selectedVentaTicket.nombre_bodega || 'Sede Principal'}</p>
-              <p className="text-[10px] text-[#A0AEC0]">N° {selectedVentaTicket.id_factura}</p>
-              <p className="text-[10px] text-[#A0AEC0]">
-                {new Date(selectedVentaTicket.fecha_cobro || selectedVentaTicket.fecha).toLocaleString()}
+              <p className="text-xs font-satoshi-black text-slate-700">
+                {selectedVentaTicket.vendedor_nombre || userAuth?.nombre || 'Leonardo Villamizar'}
+              </p>
+              <p className="text-[11px] text-slate-500 font-mono">
+                N° {selectedVentaTicket.id_factura}
+              </p>
+              <p className="text-[11px] text-slate-500 font-mono">
+                Ref Orden: {selectedVentaTicket.ref_orden || 'N/A'}
               </p>
             </div>
 
-            <div className="border-b border-dashed border-slate-700 pb-2 text-[10px] space-y-0.5 text-slate-300">
-              <p>CLIENTE: <span className="font-bold text-white">{selectedVentaTicket.cliente_nombre}</span></p>
-              <p>NIT/ID: {selectedVentaTicket.cliente_nit || 'CF_GENERAL'}</p>
-              <p>CAJERO: {selectedVentaTicket.vendedor_nombre}</p>
+            {/* LÍNEA DIVISORA CORTE */}
+            <div className="border-b border-dashed border-slate-300" />
+
+            {/* DATOS DEL CLIENTE */}
+            <div className="space-y-1 text-[11px] text-slate-700">
+              <p><strong className="text-slate-900">CLIENTE:</strong> {selectedVentaTicket.cliente_nombre || 'Consumidor Final (CF)'}</p>
+              <p><strong className="text-slate-900">NIT/CC:</strong> {selectedVentaTicket.cliente_nit || 'CF_GENERAL'} (Tipo: 13)</p>
+              <p><strong className="text-slate-900">CORREO:</strong> {selectedVentaTicket.cliente_correo || 'cliente@general.com'}</p>
+              <p><strong className="text-slate-900">TELÉFONO:</strong> {selectedVentaTicket.cliente_telefono || 'N/A'}</p>
+              <p><strong className="text-slate-900">DIRECCIÓN:</strong> {selectedVentaTicket.cliente_direccion || 'N/A'}</p>
+              <p><strong className="text-slate-900">CIUDAD:</strong> {selectedVentaTicket.cliente_ciudad || 'Cali'}</p>
+              <p><strong className="text-slate-900">RESP. FISCAL:</strong> R-99-PN</p>
+              <p><strong className="text-slate-900">MÉTODO:</strong> {selectedVentaTicket.metodo_pago || 'EFECTIVO'}</p>
             </div>
 
-            <div className="border-b border-dashed border-slate-700 pb-3 space-y-1.5">
-              {Array.isArray(selectedVentaTicket.items) && selectedVentaTicket.items.map((it: any, i: number) => (
-                <div key={i} className="flex justify-between items-start text-[11px]">
-                  <div className="truncate pr-2">
-                    <div className="font-bold text-slate-100 truncate">{it.nombre}</div>
-                    <div className="text-[9px] text-[#A0AEC0]">{it.cantidad} x {formatoCOP(it.precio)}</div>
+            {/* LÍNEA DIVISORA CORTE */}
+            <div className="border-b border-dashed border-slate-300" />
+
+            {/* LISTA DE PRODUCTOS VENDIDOS */}
+            <div className="space-y-3">
+              {Array.isArray(selectedVentaTicket.items) && selectedVentaTicket.items.map((it: any, i: number) => {
+                const tarifaIvaItem = it.tarifaIva || 19;
+                const totalItem = (it.precio || 0) * (it.cantidad || 1);
+
+                return (
+                  <div key={i} className="flex justify-between items-start text-xs">
+                    <div>
+                      <div className="font-bold text-slate-900">{it.nombre}</div>
+                      <div className="text-[10px] text-slate-500">
+                        Cant: {it.cantidad} x {formatoCOP(it.precio)} (IVA {tarifaIvaItem}%)
+                      </div>
+                    </div>
+                    <span className="font-bold text-slate-900">{formatoCOP(totalItem)}</span>
                   </div>
-                  <span className="font-bold text-[#0DE8C0]">{formatoCOP(it.cantidad * it.precio)}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            <div className="space-y-1 pt-1 text-right">
-              {selectedVentaTicket.subtotal_bruto > 0 && (
-                <div className="flex justify-between text-[11px] text-slate-400">
-                  <span>Subtotal Bruto:</span>
-                  <span>{formatoCOP(selectedVentaTicket.subtotal_bruto)}</span>
-                </div>
-              )}
+            {/* LÍNEA DIVISORA CORTE */}
+            <div className="border-b border-dashed border-slate-300" />
 
-              {selectedVentaTicket.descuento_monto > 0 && (
-                <div className="flex justify-between text-[11px] text-amber-400 font-bold">
-                  <span>Descuento ({selectedVentaTicket.descuento_motivo}):</span>
-                  <span>-{formatoCOP(selectedVentaTicket.descuento_monto)}</span>
-                </div>
-              )}
+            {/* CÁLCULO Y LIQUIDACIÓN IMPOSITIVA */}
+            <div className="space-y-1.5 pt-1 text-slate-700 text-xs">
+              <div className="flex justify-between">
+                <span>Subtotal Gravable:</span>
+                <span className="font-mono text-slate-900">{formatoCOP(selectedVentaTicket.subtotal || selectedVentaTicket.total)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>IVA Discriminado:</span>
+                <span className="font-mono text-slate-900">{formatoCOP(selectedVentaTicket.iva_monto || 0)}</span>
+              </div>
 
-              <div className="flex justify-between text-sm font-black pt-2 border-t border-slate-700 text-[#0DE8C0]">
-                <span>TOTAL A PAGAR:</span>
-                <span>{formatoCOP(selectedVentaTicket.total)}</span>
+              <div className="border-b border-slate-900 pt-1" />
+
+              <div className="flex justify-between text-base font-black text-slate-900 pt-1">
+                <span>TOTAL:</span>
+                <span className="font-mono">{formatoCOP(selectedVentaTicket.total)}</span>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="w-full bg-[#0DE8C0] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase shadow flex items-center justify-center gap-2"
-            >
-              <svg className="w-4 h-4 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
-              <span>Imprimir Comprobante PDF</span>
-            </button>
+            {/* BOTÓN IMPRIMIR COMPROBANTE PDF CON TONO TURQUESA NEÓN (#0DE8C0) */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3.5 rounded-2xl text-xs uppercase tracking-wider transition-all duration-300 shadow-md flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                <span>IMPRIMIR COMPROBANTE PDF</span>
+              </button>
+            </div>
 
           </div>
         </div>
