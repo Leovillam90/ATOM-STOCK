@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // Tooltip Informativo para Conexiones E-Commerce
   const [showEcommerceTooltip, setShowEcommerceTooltip] = useState(false);
 
-  // Formularios de Autenticación
+  // FORMULARIO Y ESTADOS DE AUTENTICACIÓN
   const [isRegister, setIsRegister] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [nombreField, setNombreField] = useState('');
@@ -153,7 +153,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const esCuentaNueva = numSucursales === 0 && numProductos === 0;
   const rolActual = userAuth?.rol || 'ADMIN';
 
-  // CONFIGURACIÓN DE PILL BADGES CON ROJO NEÓN CLARO ATOM (#FF0055)
+  // CONFIGURACIÓN DE PILL BADGES UNIFICADOS CON ROJO NEÓN CLARO ATOM (#FF0055)
   const menuItems = [
     {
       label: 'Reportes / Analytics',
@@ -263,7 +263,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       ),
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 005.656-5.656l-1.1 1.1" />
         </svg>
       )
     },
@@ -284,129 +284,257 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     );
   }
 
+  /* -------------------------------------------------------------------------- */
+  /* PANTALLA DE LOGIN UNIFICADA CON ESTILO TARJETA FLOTANTE Y SPLIT SCREEN     */
+  /* -------------------------------------------------------------------------- */
   if (!userAuth) {
     return (
       <html lang="es">
-        <body className="bg-[#1D2935] min-h-screen text-slate-100 antialiased font-sans select-none flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#253443] border border-slate-700/60 p-8 rounded-2xl shadow-2xl space-y-6">
+        <body className="bg-[#111823] min-h-screen text-slate-100 antialiased font-sans select-none p-0 md:p-4 lg:p-6">
+          <div className="w-full h-full min-h-[calc(100vh-2rem)] flex flex-col lg:flex-row rounded-none md:rounded-3xl overflow-hidden border border-slate-800/80 shadow-2xl bg-[#1a2332]">
             
-            <div className="text-center">
-              <h1 className="text-3xl font-black text-white font-satoshi-black">
-                ATOM <span className="text-[#0DE8C0]">STOCK</span>
-              </h1>
-              <p className="text-xs text-slate-400 mt-1 font-satoshi-regular">
-                {isRegister
-                  ? 'Ingresa tus datos para registrar tu empresa'
-                  : 'Suite de Control Multibodega Omnicanal'}
-              </p>
+            {/* LADO IZQUIERDO: BRANDING E IMAGEN */}
+            <div className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden bg-[#0d131f]">
+              <div 
+                className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity scale-105"
+                style={{ 
+                  backgroundImage: `url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=1600&auto=format&fit=crop')` 
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0d131f] via-[#0d131f]/70 to-transparent" />
+              <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-[#0DE8C0]/20 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="relative z-10 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#0DE8C0] to-purple-600 flex items-center justify-center font-black text-white text-base shadow-lg shadow-[#0DE8C0]/20">
+                  A
+                </div>
+                <div>
+                  <span className="text-xl font-black tracking-wider text-white font-mono block leading-none">
+                    ATOM <span className="text-[#0DE8C0]">STOCK</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 tracking-widest uppercase font-mono">
+                    SUITE OMNICANAL
+                  </span>
+                </div>
+              </div>
+
+              <div className="relative z-10 max-w-md space-y-6 my-auto">
+                <div className="inline-flex items-center gap-2 bg-[#1a2332]/90 border border-[#0DE8C0]/30 px-3 py-1.5 rounded-full backdrop-blur-md">
+                  <span className="w-2 h-2 rounded-full bg-[#0DE8C0] animate-pulse" />
+                  <span className="text-xs font-mono text-[#0DE8C0]">Control Total Multibodega v1.0</span>
+                </div>
+
+                <h1 className="text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight">
+                  Potencia tu inventario y sincroniza tus ventas en tiempo real.
+                </h1>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Conecta tus tiendas físicas y canales digitales (Dropi, Véndelo, Otras) centralizando stock, despachos y facturación electrónica.
+                </p>
+
+                <div className="bg-[#1a2332]/80 border border-slate-700/60 backdrop-blur-md p-4 rounded-2xl flex items-center justify-between text-xs space-x-4">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-mono">Sincronización</span>
+                    <span className="font-bold text-[#0DE8C0]">Omnicanal 100%</span>
+                  </div>
+                  <div className="h-8 w-px bg-slate-700" />
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-mono">Facturación</span>
+                    <span className="font-bold text-white">Cumplimiento DIAN</span>
+                  </div>
+                  <div className="h-8 w-px bg-slate-700" />
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-mono">Inventario</span>
+                    <span className="font-bold text-purple-400">Multibodega</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative z-10 text-[10px] text-slate-500 font-mono">
+                © 2026 ATOM STOCK · Todos los derechos reservados.
+              </div>
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              {isRegister && (
-                <div>
-                  <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
-                    Nombre completo <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3.5 text-sm text-white focus:outline-none transition font-satoshi-regular placeholder:text-slate-500"
-                    value={nombreField}
-                    onChange={(e) => setNombreField(e.target.value)}
-                    placeholder="Leonardo Villamizar"
-                  />
+            {/* LADO DERECHO: FORMULARIO FLOTANTE */}
+            <div className="flex-1 flex flex-col justify-between p-6 sm:p-12 bg-[#1a2332] relative">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2 lg:hidden">
+                  <div className="w-8 h-8 rounded-lg bg-[#0DE8C0]/20 text-[#0DE8C0] font-black flex items-center justify-center text-xs">
+                    A
+                  </div>
+                  <span className="font-bold text-sm text-white">ATOM STOCK</span>
                 </div>
-              )}
 
-              <div>
-                <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
-                  Usuario / Correo <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3.5 text-sm text-white focus:outline-none transition font-satoshi-regular placeholder:text-slate-500"
-                  value={userField}
-                  onChange={(e) => setUserField(e.target.value)}
-                  placeholder="admin@atomstock.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-2">
-                  Contraseña <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3.5 text-sm text-white focus:outline-none transition font-satoshi-regular placeholder:text-slate-500 pr-10"
-                    value={passField}
-                    onChange={(e) => setPassField(e.target.value)}
-                    placeholder="••••••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#0DE8C0] transition"
+                <div className="flex items-center gap-3 ml-auto">
+                  <a 
+                    href="https://wa.me/573138712634?text=Hola,%20necesito%20soporte%20con%20ATOM%20STOCK"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-slate-300 hover:text-white flex items-center gap-2 bg-[#111823] hover:bg-[#151f2e] px-3.5 py-2 rounded-full border border-slate-700/60 transition shadow-md"
                   >
-                    {showPassword ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3l18 18" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    )}
-                  </button>
+                    <svg className="w-5 h-5 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-satoshi-black">Soporte</span>
+                  </a>
                 </div>
               </div>
 
-              {!isRegister && (
-                <div className="flex items-center justify-between text-xs pt-1 font-satoshi-regular">
-                  <label className="flex items-center text-slate-400 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={remember}
-                      onChange={(e) => setRemember(e.target.checked)}
-                      className="rounded bg-[#1D2935] border-slate-700 text-[#0DE8C0] focus:ring-0 mr-2 w-3.5 h-3.5"
-                    />
-                    Recordar sesión
-                  </label>
-                  <button type="button" className="text-slate-400 hover:text-[#0DE8C0] transition">
-                    ¿Olvidaste tu contraseña?
-                  </button>
+              <div className="w-full max-w-md mx-auto space-y-8 my-auto py-8">
+                <div className="text-center space-y-2">
+                  <h2 className="text-2xl font-black text-white tracking-tight">
+                    {isRegister ? 'Registro de Empresa' : 'Bienvenido, ingresa tus datos'}
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    {isRegister
+                      ? 'Crea tu cuenta corporativa para administrar bodegas y puntos de venta.'
+                      : 'Ingresa la información de tu negocio para acceder a la plataforma.'}
+                  </p>
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={loadingAction}
-                className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3.5 rounded-xl text-xs uppercase tracking-wider transition duration-300 shadow-lg disabled:opacity-50"
-              >
-                {loadingAction ? 'Validando Acceso...' : isRegister ? 'Registrarse' : 'Ingresar'}
-              </button>
-            </form>
+                <form onSubmit={handleLogin} className="space-y-6">
 
-            <div className="text-center text-xs text-slate-400 font-satoshi-regular pt-2">
-              {isRegister ? (
-                <span>
-                  ¿Ya tienes una cuenta?{' '}
-                  <button type="button" onClick={() => setIsRegister(false)} className="text-[#0DE8C0] font-satoshi-black hover:underline ml-1">
-                    Inicia sesión
-                  </button>
-                </span>
-              ) : (
-                <span>
-                  ¿No tienes una cuenta?{' '}
-                  <button type="button" onClick={() => setIsRegister(true)} className="text-[#0DE8C0] font-satoshi-black hover:underline ml-1">
-                    Regístrate
-                  </button>
-                </span>
-              )}
+                  {isRegister && (
+                    <div className="relative border-b border-slate-700 focus-within:border-[#0DE8C0] transition-colors pb-1">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                        Nombre del Administrador / Empresa
+                      </label>
+                      <div className="flex items-center">
+                        <svg className="w-4 h-4 text-slate-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <input
+                          type="text"
+                          required
+                          value={nombreField}
+                          onChange={(e) => setNombreField(e.target.value)}
+                          placeholder="Leonardo Villamizar"
+                          className="w-full bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="relative border-b border-slate-700 focus-within:border-[#0DE8C0] transition-colors pb-1">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                        Usuario / Correo
+                      </label>
+                      <div className="flex items-center">
+                        <svg className="w-4 h-4 text-slate-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                        </svg>
+                        <input
+                          type="text"
+                          required
+                          value={userField}
+                          onChange={(e) => setUserField(e.target.value)}
+                          placeholder="admin@atomstock.com"
+                          className="w-full bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="relative border-b border-slate-700 focus-within:border-[#0DE8C0] transition-colors pb-1">
+                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                        Clave de Acceso
+                      </label>
+                      <div className="flex items-center">
+                        <svg className="w-4 h-4 text-slate-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          required
+                          value={passField}
+                          onChange={(e) => setPassField(e.target.value)}
+                          placeholder="••••••••••••"
+                          className="w-full bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none pr-6"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="text-slate-500 hover:text-[#0DE8C0] transition ml-1"
+                        >
+                          {showPassword ? (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3l18 18" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!isRegister && (
+                    <div className="flex justify-between items-center text-[11px] pt-1">
+                      <label className="flex items-center text-slate-400 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={remember}
+                          onChange={(e) => setRemember(e.target.checked)}
+                          className="rounded bg-[#111823] border-slate-700 text-[#0DE8C0] focus:ring-0 mr-2 w-3.5 h-3.5"
+                        />
+                        Recordar sesión
+                      </label>
+                      <button type="button" className="text-slate-400 hover:text-[#0DE8C0] transition font-medium underline underline-offset-2">
+                        ¿Olvidaste tu clave?
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="pt-4 space-y-3">
+                    <button
+                      type="submit"
+                      disabled={loadingAction}
+                      className="w-full bg-gradient-to-r from-[#0DE8C0] to-[#0bcfa8] hover:from-[#0bcfa8] hover:to-[#09b897] text-[#0d131f] font-black py-3.5 rounded-full text-xs uppercase tracking-wider transition-all duration-300 shadow-lg shadow-[#0DE8C0]/10 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {loadingAction ? (
+                        <span>Iniciando sesión...</span>
+                      ) : (
+                        <>
+                          <span>{isRegister ? 'Registrar Empresa' : 'Iniciar sesión'}</span>
+                          <svg className="w-4 h-4 text-[#0d131f]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                          </svg>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsRegister(!isRegister)}
+                      className="w-full bg-[#111823] hover:bg-[#151f2e] text-slate-300 border border-slate-700 font-bold py-3 rounded-full text-xs transition flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                      </svg>
+                      <span>{isRegister ? '¿Ya tienes cuenta? Inicia Sesión' : 'Crear una cuenta nueva'}</span>
+                    </button>
+                  </div>
+
+                </form>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-500 pt-6 border-t border-slate-800/60 gap-2">
+                <div className="flex gap-3">
+                  <a href="#" className="hover:text-slate-300 transition">Términos de servicio</a>
+                  <span>·</span>
+                  <a href="#" className="hover:text-slate-300 transition">Políticas de privacidad</a>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span>Conexión segura SSL</span>
+                </div>
+              </div>
+
             </div>
 
           </div>
@@ -415,6 +543,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     );
   }
 
+  /* -------------------------------------------------------------------------- */
+  /* PANEL PRINCIPAL DASHBOARD CUANDO EL USUARIO YA ESTÁ AUTENTICADO            */
+  /* -------------------------------------------------------------------------- */
   let pasocumplidoCount = 0;
   if (numSucursales && numSucursales > 0) pasocumplidoCount++;
   if (numProductos && numProductos > 0) pasocumplidoCount++;
