@@ -172,7 +172,7 @@ export default function ClientesPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CSV DE CLIENTES
+  // PROCESAR CARGA MASIVA CSV DE CLIENTES (CON SEGURIDAD ANTI-DUPLICADOS)
   const handleProcesarCargaMasivaClientes = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV.');
@@ -195,7 +195,12 @@ export default function ClientesPage() {
 
         const separador = lines[0].includes(';') ? ';' : ',';
         let creados = 0;
-        let actualizados = 0;
+        let rechazadosPorNit = 0;
+        let rechazadosPorTel = 0;
+
+        // Sets locales para detectar duplicados en el mismo archivo CSV que se está subiendo
+        const nitsEnArchivo = new Set<string>();
+        const telsEnArchivo = new Set<string>();
 
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
@@ -209,9 +214,28 @@ export default function ClientesPage() {
             const dirInput = cols[5] || 'General';
             const ciuInput = cols[6] || 'Colombia';
 
-            // Buscar si ya existe un cliente con este NIT/Cédula en el estado local o Firestore
-            const clienteExistente = clientes.find(c => String(c.nit || '').trim() === nitInput && nitInput !== 'CF_GENERAL');
-            const idDocFinal = clienteExistente ? clienteExistente.id_doc : `CLI_${Date.now().toString().slice(-6)}_${i}`;
+            // 1. REGLA DE SEGURIDAD: VERIFICAR DUPLICIDAD DE NIT (Tanto en BD como en el propio archivo)
+            if (nitInput !== 'CF_GENERAL') {
+              const existeNitEnBD = clientes.some(c => String(c.nit || '').trim() === nitInput);
+              if (existeNitEnBD || nitsEnArchivo.has(nitInput)) {
+                rechazadosPorNit++;
+                continue; // Saltar al siguiente registro
+              }
+              nitsEnArchivo.add(nitInput);
+            }
+
+            // 2. REGLA DE SEGURIDAD: VERIFICAR DUPLICIDAD DE TELÉFONO (Tanto en BD como en el propio archivo)
+            if (telInput && telInput !== '') {
+              const existeTelEnBD = clientes.some(c => String(c.telefono || '').trim() === telInput);
+              if (existeTelEnBD || telsEnArchivo.has(telInput)) {
+                rechazadosPorTel++;
+                continue; // Saltar al siguiente registro
+              }
+              telsEnArchivo.add(telInput);
+            }
+
+            // Si pasa las reglas, se procede a guardar
+            const idDocFinal = `CLI_${Date.now().toString().slice(-6)}_${i}`;
 
             const cliObj = {
               id_cuenta: userAuth.id_cuenta,
@@ -228,16 +252,20 @@ export default function ClientesPage() {
             };
 
             await setDoc(doc(db, 'clientes', idDocFinal), cliObj, { merge: true });
-
-            if (clienteExistente) {
-              actualizados++;
-            } else {
-              creados++;
-            }
+            creados++;
           }
         }
 
-        alert(`¡Carga Masiva Exitosa!\n\n✨ Clientes Creados: ${creados}\n🔄 Clientes Actualizados por NIT: ${actualizados}`);
+        let mensajeAlerta = `¡Proceso Masivo Finalizado!\n\n✨ Clientes Creados Exitosamente: ${creados}`;
+        
+        if (rechazadosPorNit > 0 || rechazadosPorTel > 0) {
+          mensajeAlerta += `\n\n⚠️ REGISTROS OMITIDOS (DUPLICADOS):\n`;
+          if (rechazadosPorNit > 0) mensajeAlerta += `- ${rechazadosPorNit} omitidos por NIT/Cédula repetida.\n`;
+          if (rechazadosPorTel > 0) mensajeAlerta += `- ${rechazadosPorTel} omitidos por Teléfono repetido.`;
+        }
+
+        alert(mensajeAlerta);
+        
         setFileMasivo(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         setShowModalMasivo(false);
