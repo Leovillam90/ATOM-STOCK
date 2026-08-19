@@ -11,6 +11,22 @@ export default function ProductosPage() {
   const [ventas, setVentas] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // LISTA OFICIAL DE CATEGORÍAS PREDEFINIDAS
+  const CATEGORIAS_OFICIALES = [
+    'ALIMENTOS',
+    'AUTOMOTRIZ Y HERRAMIENTAS',
+    'BEBES Y JUGUETES',
+    'BELLEZA Y CUIDADO',
+    'DEPORTES',
+    'FERRETERIA',
+    'HOGAR',
+    'MASCOTAS',
+    'MODA',
+    'OFICINA Y PAPELERIA',
+    'SALUD',
+    'TECNOLOGIA'
+  ];
+
   // Control de Vista: Tabla de Datos vs Tarjetas
   const [viewMode, setViewMode] = useState<'TABLA' | 'TARJETAS'>('TABLA');
 
@@ -23,7 +39,7 @@ export default function ProductosPage() {
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [skuInput, setSkuInput] = useState('');
   const [nombre, setNombre] = useState('');
-  const [categoria, setCategoria] = useState('');
+  const [categoria, setCategoria] = useState('TECNOLOGIA');
   
   // TRES NIVELES DE PRECIOS
   const [pmayor, setPmayor] = useState<number | ''>('');
@@ -164,7 +180,7 @@ export default function ProductosPage() {
     setEditingSku(null);
     setSkuInput('');
     setNombre('');
-    setCategoria('GENERAL');
+    setCategoria('TECNOLOGIA');
     setPmayor('');
     setPlocal('');
     setPecom('');
@@ -191,7 +207,9 @@ export default function ProductosPage() {
     setEditingSku(p.sku);
     setSkuInput(p.sku);
     setNombre(p.nombre || '');
-    setCategoria(p.categoria || 'GENERAL');
+    
+    const catUpper = String(p.categoria || '').toUpperCase().trim();
+    setCategoria(CATEGORIAS_OFICIALES.includes(catUpper) ? catUpper : 'SIN CATEGORIA');
     
     setPmayor(p.pmayor !== undefined ? p.pmayor : '');
     setPlocal(p.plocal !== undefined ? p.plocal : (p.precio !== undefined ? p.precio : ''));
@@ -229,7 +247,7 @@ export default function ProductosPage() {
     return { base, iva };
   };
 
-  // AUXILIAR DE LIMPIEZA DE FORMATEOS FINANCIEROS (Ej: "$ 120,00" -> 120)
+  // AUXILIAR DE LIMPIEZA DE FORMATEOS FINANCIEROS
   const parseMontoPuro = (val: any) => {
     if (val === undefined || val === null) return 0;
     let numStr = String(val).replace(/[\$\s"]/g, '').trim();
@@ -241,7 +259,7 @@ export default function ProductosPage() {
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  // GUARDAR O ACTUALIZAR PRODUCTO (CON VALIDACIÓN DE SKU DUPLICADO)
+  // GUARDAR O ACTUALIZAR PRODUCTO
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!skuInput.trim() || !nombre.trim()) {
@@ -300,7 +318,7 @@ export default function ProductosPage() {
         id_cuenta: userAuth.id_cuenta,
         sku: skuClean,
         nombre: nombre.trim(),
-        categoria: categoria.trim().toUpperCase() || 'GENERAL',
+        categoria: categoria.trim().toUpperCase() || 'SIN CATEGORIA',
         
         pmayor: Number(pmayor) || 0,
         plocal: Number(plocal) || 0,
@@ -345,7 +363,7 @@ export default function ProductosPage() {
     }
   };
 
-  // DESCARGAR PLANTILLA CSV INCLUYENDO COLUMNAS DE COSTOS Y FULFILLMENT
+  // DESCARGAR PLANTILLA CSV DE PRODUCTOS
   const handleDescargarPlantillaProductos = () => {
     const bom = '\uFEFF';
     const csvContent = 
@@ -365,7 +383,7 @@ export default function ProductosPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CSV CON VALIDACIÓN ESTRICTA DE ENCABEZADOS Y SEGURIDAD
+  // PROCESAR CARGA MASIVA CON VALIDACIÓN DE CATEGORÍA OFICIAL Y COLUMNAS
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV.');
@@ -389,7 +407,7 @@ export default function ProductosPage() {
         const separador = lines[0].includes(';') ? ';' : ',';
         const headers = lines[0].split(separador).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
 
-        // COLUMNAS CLAVE OBLIGATORIAS DE LA PLANTILLA OFICIAL DE PRODUCTOS
+        // COLUMNAS CLAVE OBLIGATORIAS
         const columnasRequeridas = ['sku', 'nombre', 'categoria', 'precio_tienda_fisica'];
         const columnasFaltantes = columnasRequeridas.filter(col => !headers.includes(col));
 
@@ -399,7 +417,6 @@ export default function ProductosPage() {
           return;
         }
 
-        // Mapeo dinámico de posiciones de columnas según el encabezado
         const idxSku = headers.indexOf('sku');
         const idxNombre = headers.indexOf('nombre');
         const idxCat = headers.indexOf('categoria');
@@ -422,7 +439,9 @@ export default function ProductosPage() {
           if (cols.length >= 2 && cols[idxSku] && cols[idxSku] !== '') {
             const skuClean = cols[idxSku].toUpperCase();
             const nombreProd = cols[idxNombre] || 'Producto Sin Nombre';
-            const catProd = (cols[idxCat] || 'GENERAL').toUpperCase();
+            
+            const rawCatCsv = (cols[idxCat] || '').toUpperCase().trim();
+            const catProd = CATEGORIAS_OFICIALES.includes(rawCatCsv) ? rawCatCsv : 'SIN CATEGORIA';
             
             const precioMayor = idxPMayor !== -1 ? parseMontoPuro(cols[idxPMayor]) : 0;
             const precioFisica = parseMontoPuro(cols[idxPPos]) || precioMayor;
@@ -433,7 +452,6 @@ export default function ProductosPage() {
             const aplicaIvaBool = ivaIncluText === 'SI' || ivaIncluText === '1' || ivaIncluText === 'TRUE';
             const tarifaIvaNum = aplicaIvaBool ? (idxTarifaIva !== -1 ? (parseMontoPuro(cols[idxTarifaIva]) || 19) : 19) : 0;
 
-            // COSTOS DE FABRICACIÓN / COMPRA Y FULFILLMENT
             const costoImp = idxCostoImp !== -1 ? parseMontoPuro(cols[idxCostoImp]) : 0;
             const costoFul = idxCostoFul !== -1 ? parseMontoPuro(cols[idxCostoFul]) : 0;
             const stockCant = idxStock !== -1 ? parseMontoPuro(cols[idxStock]) : 0;
@@ -609,7 +627,6 @@ export default function ProductosPage() {
             onClick={() => setShowModalMasivo(true)}
             className="bg-transparent hover:bg-[#253443] border border-[#6884C5] text-[#6884C5] hover:text-white font-satoshi-black px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 flex items-center gap-2"
           >
-            {/* ÍCONO 2D PLANO: SUBIR / CARGA */}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
@@ -621,7 +638,6 @@ export default function ProductosPage() {
             onClick={handleOpenCreate}
             className="bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black px-6 py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-lg shadow-emerald-950/40 flex items-center gap-2 shrink-0"
           >
-            {/* ÍCONO 2D PLANO: MAS / AGREGAR */}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
             </svg>
@@ -665,7 +681,6 @@ export default function ProductosPage() {
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
               totalBajoStockCount > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-[#1D2935] text-slate-500'
             }`}>
-              {/* ÍCONO 2D PLANO: ALERTA */}
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
@@ -697,7 +712,6 @@ export default function ProductosPage() {
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
               totalInactivos120Count > 0 ? 'bg-red-500/10 text-red-400' : 'bg-[#1D2935] text-slate-500'
             }`}>
-              {/* ÍCONO 2D PLANO: RELOJ PAUSA */}
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -723,7 +737,6 @@ export default function ProductosPage() {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3 w-full md:w-auto flex-1">
             <div className="relative flex-1 max-w-md">
-              {/* ÍCONO 2D PLANO: BÚSQUEDA */}
               <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
@@ -763,7 +776,6 @@ export default function ProductosPage() {
                   : 'text-[#A0AEC0] hover:text-white'
               }`}
             >
-              {/* ÍCONO 2D PLANO: VISTA TABLA */}
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
@@ -779,7 +791,6 @@ export default function ProductosPage() {
                   : 'text-[#A0AEC0] hover:text-white'
               }`}
             >
-              {/* ÍCONO 2D PLANO: VISTA CUADRÍCULA */}
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
               </svg>
@@ -896,7 +907,6 @@ export default function ProductosPage() {
                           {p.imagen_url ? (
                             <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover" />
                           ) : (
-                            /* ÍCONO 2D PLANO: ETIQUETA / PRODUCTO */
                             <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                             </svg>
@@ -911,7 +921,7 @@ export default function ProductosPage() {
 
                     <td className="p-4">
                       <span className="text-[10px] font-satoshi-black uppercase bg-[#1D2935] text-slate-300 px-2 py-0.5 rounded border border-slate-700">
-                        {p.categoria || 'GENERAL'}
+                        {p.categoria || 'SIN CATEGORIA'}
                       </span>
                     </td>
 
@@ -954,7 +964,6 @@ export default function ProductosPage() {
                         className="p-1.5 text-red-400 hover:bg-red-950/40 rounded-lg transition"
                         title="Eliminar producto"
                       >
-                        {/* ÍCONO 2D PLANO: TRASH */}
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
@@ -1012,7 +1021,6 @@ export default function ProductosPage() {
                       {p.imagen_url ? (
                         <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover" />
                       ) : (
-                        /* ÍCONO 2D PLANO: ETIQUETA / PRODUCTO */
                         <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                         </svg>
@@ -1023,7 +1031,7 @@ export default function ProductosPage() {
                         {p.nombre}
                       </h3>
                       <p className="text-[10px] text-[#A0AEC0] font-satoshi-black uppercase">
-                        Cat: {p.categoria || 'GENERAL'}
+                        Cat: {p.categoria || 'SIN CATEGORIA'}
                       </p>
                     </div>
                   </div>
@@ -1046,7 +1054,7 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {/* MODAL CREAR / EDITAR PRODUCTO CON SELECCIÓN DE IVA Y UNIT ECONOMICS */}
+      {/* MODAL CREAR / EDITAR PRODUCTO CON ÍCONOS 2D PLANOS E INPUTS SIN FLECHAS */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl font-sans max-h-[90vh] overflow-y-auto">
@@ -1068,24 +1076,30 @@ export default function ProductosPage() {
                 <button
                   type="button"
                   onClick={() => setActiveModalTab('DATOS')}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-satoshi-black transition flex items-center justify-center gap-1.5 ${
                     activeModalTab === 'DATOS'
                       ? 'bg-[#0DE8C0] text-[#1D2935]'
                       : 'text-[#A0AEC0] hover:text-white'
                   }`}
                 >
-                  ✏️ Formulario de Edición
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span>Formulario de Edición</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveModalTab('HISTORIAL')}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-satoshi-black transition flex items-center justify-center gap-1.5 ${
                     activeModalTab === 'HISTORIAL'
                       ? 'bg-[#0DE8C0] text-[#1D2935]'
                       : 'text-[#A0AEC0] hover:text-white'
                   }`}
                 >
-                  📜 Bitácora de Cambios ({historialCambios.length})
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Bitácora de Cambios ({historialCambios.length})</span>
                 </button>
               </div>
             )}
@@ -1094,10 +1108,13 @@ export default function ProductosPage() {
             {activeModalTab === 'DATOS' && (
               <form onSubmit={handleSave} className="space-y-4">
                 
-                {/* SUBIDA DE IMAGEN */}
+                {/* SUBIDA DE IMAGEN CON ÍCONO 2D PLANO */}
                 <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 space-y-3">
-                  <label className="block text-xs font-satoshi-black text-[#0DE8C0] uppercase">
-                    🖼️ Imagen del Producto
+                  <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>Imagen del Producto</span>
                   </label>
 
                   <div className="flex items-center gap-4">
@@ -1105,7 +1122,6 @@ export default function ProductosPage() {
                       {imagenUrl ? (
                         <img src={imagenUrl} alt="Vista Previa" className="w-full h-full object-cover" />
                       ) : (
-                        /* ÍCONO 2D PLANO: IMAGEN DEFAULT */
                         <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
@@ -1167,22 +1183,30 @@ export default function ProductosPage() {
                   />
                 </div>
 
+                {/* SELECTOR DE CATEGORÍA PREDEFINIDA */}
                 <div>
-                  <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-1.5">Categoría</label>
-                  <input 
-                    type="text"
-                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3 text-xs text-white font-satoshi-regular uppercase"
-                    placeholder="TECNOLOGIA"
+                  <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-1.5">Categoría *</label>
+                  <select
+                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3 text-xs text-white font-satoshi-black focus:outline-none cursor-pointer"
                     value={categoria}
                     onChange={(e) => setCategoria(e.target.value)}
-                  />
+                  >
+                    {CATEGORIAS_OFICIALES.map(cat => (
+                      <option key={cat} value={cat} className="bg-[#1D2935] text-white">
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                {/* ASIGNACIÓN DE INVENTARIO */}
+                {/* ASIGNACIÓN DE INVENTARIO CON ÍCONO 2D PLANO */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <div className="flex justify-between items-center">
-                    <label className="block text-xs font-satoshi-black text-[#0DE8C0] uppercase">
-                      📦 Asignación de Stock por Sede
+                    <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                      <span>Asignación de Stock por Sede</span>
                     </label>
                     <span className="text-[10px] text-[#A0AEC0] font-mono">
                       Subtotal: {sedesFormulario.reduce((acc, s) => acc + Number(stockMap[s.id_sucursal] || 0), 0)} unds
@@ -1192,15 +1216,18 @@ export default function ProductosPage() {
                   <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                     {sedesFormulario.map((suc, i) => (
                       <div key={suc.id_sucursal || i} className="bg-[#253443] border border-slate-700/80 p-2.5 rounded-lg flex items-center justify-between gap-3 text-xs">
-                        <span className="font-satoshi-black text-white truncate">
-                          📍 {suc.nombre || suc.NOMBRE || `Sede ${suc.id_sucursal}`}
+                        <span className="font-satoshi-black text-white truncate flex items-center gap-1">
+                          <svg className="w-3.5 h-3.5 text-[#0DE8C0] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          </svg>
+                          <span>{suc.nombre || suc.NOMBRE || `Sede ${suc.id_sucursal}`}</span>
                         </span>
 
                         <div className="flex items-center gap-1.5 shrink-0">
                           <input 
                             type="number"
                             min="0"
-                            className="w-24 bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-1.5 text-center font-mono text-white text-xs"
+                            className="w-24 bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-1.5 text-center font-mono text-white text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             value={stockMap[suc.id_sucursal] !== undefined ? stockMap[suc.id_sucursal] : 0}
                             onChange={(e) => handleStockSedeChange(suc.id_sucursal, Number(e.target.value))}
                           />
@@ -1211,10 +1238,13 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
-                {/* ESTRUCTURA DE PRECIOS */}
+                {/* ESTRUCTURA DE PRECIOS CON ÍCONO 2D PLANO */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
-                  <label className="block text-xs font-satoshi-black text-[#0DE8C0] uppercase">
-                    🏷️ Estructura de Precios Finales (Cliente)
+                  <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                    <span>Estructura de Precios Finales (Cliente)</span>
                   </label>
 
                   <div className="grid grid-cols-3 gap-2">
@@ -1222,7 +1252,7 @@ export default function ProductosPage() {
                       <label className="block text-[10px] font-satoshi-black text-[#0DE8C0] mb-1 uppercase">Por Mayor ($)</label>
                       <input 
                         type="number"
-                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
+                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="85000"
                         value={pmayor}
                         onChange={(e) => setPmayor(e.target.value ? Number(e.target.value) : '')}
@@ -1233,7 +1263,7 @@ export default function ProductosPage() {
                       <label className="block text-[10px] font-satoshi-black text-white mb-1 uppercase">Tienda POS ($)</label>
                       <input 
                         type="number"
-                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
+                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="129000"
                         value={plocal}
                         onChange={(e) => setPlocal(e.target.value ? Number(e.target.value) : '')}
@@ -1244,7 +1274,7 @@ export default function ProductosPage() {
                       <label className="block text-[10px] font-satoshi-black text-[#6884C5] mb-1 uppercase">E-Commerce ($)</label>
                       <input 
                         type="number"
-                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
+                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="119000"
                         value={pecom}
                         onChange={(e) => setPecom(e.target.value ? Number(e.target.value) : '')}
@@ -1253,10 +1283,13 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
-                {/* UNIT ECONOMICS: COSTO DE FABRICACIÓN/COMPRA Y FULFILLMENT */}
+                {/* UNIT ECONOMICS: COSTOS UNITARIOS CON ÍCONO 2D PLANO */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
-                  <label className="block text-xs font-satoshi-black text-[#0DE8C0] uppercase">
-                    💰 Unit Economics (Costos Unitarios)
+                  <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Unit Economics (Costos Unitarios)</span>
                   </label>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -1267,7 +1300,7 @@ export default function ProductosPage() {
                       <input 
                         type="number"
                         min="0"
-                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
+                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="45000"
                         value={costoImportacion}
                         onChange={(e) => setCostoImportacion(e.target.value ? Number(e.target.value) : '')}
@@ -1281,7 +1314,7 @@ export default function ProductosPage() {
                       <input 
                         type="number"
                         min="0"
-                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none"
+                        className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         placeholder="8000"
                         value={costoFulfilment}
                         onChange={(e) => setCostoFulfilment(e.target.value ? Number(e.target.value) : '')}
@@ -1290,11 +1323,14 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
-                {/* MÓDULO DE CONFIGURACIÓN DE IVA */}
+                {/* MÓDULO DE CONFIGURACIÓN DE IVA CON ÍCONO 2D PLANO */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase">
-                      🏛️ Impuesto al Valor Agregado (IVA)
+                    <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                      <span>Impuesto al Valor Agregado (IVA)</span>
                     </label>
 
                     <div className="flex items-center gap-2 cursor-pointer select-none">
@@ -1351,7 +1387,10 @@ export default function ProductosPage() {
                 {editingSku && (
                   <div className="bg-[#1D2935] border border-[#C81FDA]/60 p-4 rounded-xl space-y-2">
                     <label className="block text-xs font-satoshi-black text-[#C81FDA] uppercase flex items-center gap-1.5">
-                      <span>⚠️ Motivo / Justificación de la Edición *</span>
+                      <svg className="w-4 h-4 text-[#C81FDA]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <span>Motivo / Justificación de la Edición *</span>
                     </label>
                     <textarea
                       rows={2}
@@ -1394,8 +1433,11 @@ export default function ProductosPage() {
                   {historialCambios.map((cambio: any, idx: number) => (
                     <div key={idx} className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-3.5 space-y-1 text-xs">
                       <div className="flex justify-between items-center">
-                        <span className="font-satoshi-black text-[#0DE8C0]">
-                          👤 {cambio.usuario_nombre || 'Usuario'}
+                        <span className="font-satoshi-black text-[#0DE8C0] flex items-center gap-1">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          <span>{cambio.usuario_nombre || 'Usuario'}</span>
                         </span>
                         <span className="text-[10px] font-mono text-[#A0AEC0]">
                           {cambio.fecha ? new Date(cambio.fecha).toLocaleString() : 'N/A'}
@@ -1425,7 +1467,7 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {/* MODAL CARGA MASIVA CON SOPORTE DE COSTOS E IVA Y ACTUALIZACIÓN INTELIGENTE */}
+      {/* MODAL CARGA MASIVA DE PRODUCTOS */}
       {showModalMasivo && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
