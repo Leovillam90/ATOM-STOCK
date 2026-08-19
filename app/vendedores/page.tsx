@@ -127,10 +127,11 @@ export default function VendedoresPage() {
         id_usuario: docId,
         nombre: nombre.trim(),
         user: userClean,
+        email: userClean,
         pass: pass.trim(),
         rol: rol,
-        id_sucursal: sedesAsignadas[0] || '', // Sede principal por defecto
-        sedes_asignadas: sedesAsignadas,     // Arreglo con múltiples sedes
+        id_sucursal: sedesAsignadas[0] || '',
+        sedes_asignadas: sedesAsignadas,
         fecha_actualizacion: new Date().toISOString()
       };
 
@@ -158,18 +159,22 @@ export default function VendedoresPage() {
     }
   };
 
-  // Filtrado de Usuarios por Búsqueda
+  // FILTRADO DE USUARIOS: EXCLUYE AL ADMINISTRADOR PRINCIPAL (ROL: ADMIN)
   const usuariosFiltrados = usuarios.filter(u => {
+    // Excluir al Administrador Principal para no mostrarlo en la lista de equipo/vendedores
+    if (u.rol === 'ADMIN') return false;
+
     const q = searchQuery.toLowerCase().trim();
     return String(u.nombre || '').toLowerCase().includes(q) ||
-           String(u.user || '').toLowerCase().includes(q) ||
+           String(u.user || u.email || '').toLowerCase().includes(q) ||
            String(u.rol || '').toLowerCase().includes(q);
   });
 
-  // Conteo por roles para métricas
-  const totalActivosCount = usuarios.length;
-  const vendedoresCount = usuarios.filter(u => u.rol === 'VENDEDOR').length;
-  const gerentesCount = usuarios.filter(u => u.rol === 'GERENTE_BODEGA').length;
+  // Conteos de equipo (Excluyendo al Admin)
+  const soloEquipo = usuarios.filter(u => u.rol !== 'ADMIN');
+  const totalEquipoCount = soloEquipo.length;
+  const vendedoresCount = soloEquipo.filter(u => u.rol === 'VENDEDOR').length;
+  const gerentesCount = soloEquipo.filter(u => u.rol === 'GERENTE_BODEGA').length;
 
   return (
     <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">
@@ -187,7 +192,7 @@ export default function VendedoresPage() {
             Equipo / Vendedores
           </h1>
           <p className="text-xs text-[#A0AEC0] mt-1 font-satoshi-regular max-w-xl">
-            Asigna roles de Administrador, Gerente o Vendedor y otorga permisos de gestión en múltiples sedes.
+            Asigna roles de Gerente o Vendedor y otorga permisos de gestión en múltiples sedes.
           </p>
         </div>
 
@@ -203,12 +208,12 @@ export default function VendedoresPage() {
         </button>
       </div>
 
-      {/* METRICAS SUPERIORES CON ALTURA FLEXIBLE Y JERARQUÍA CORREGIDA */}
+      {/* METRICAS SUPERIORES */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3">
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
-              TOTAL USUARIOS ACTIVOS
+              EQUIPO REGISTRADO
             </span>
             <div className="w-8 h-8 rounded-full bg-[#0DE8C0]/10 flex items-center justify-center text-[#0DE8C0] shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -217,12 +222,12 @@ export default function VendedoresPage() {
             </div>
           </div>
           <div>
-            <span className={`text-4xl font-black font-satoshi-black tracking-tight ${totalActivosCount > 0 ? 'text-white drop-shadow-sm' : 'text-slate-500'}`}>
-              {totalActivosCount}
+            <span className={`text-4xl font-black font-satoshi-black tracking-tight ${totalEquipoCount > 0 ? 'text-white drop-shadow-sm' : 'text-slate-500'}`}>
+              {totalEquipoCount}
             </span>
           </div>
           <p className="text-xs text-[#A0AEC0] font-satoshi-regular leading-tight">
-            Cuentas con credenciales de acceso al ERP
+            Colaboradores con acceso activo a las sedes
           </p>
         </div>
 
@@ -285,7 +290,7 @@ export default function VendedoresPage() {
         </div>
       </div>
 
-      {/* TABLA DE USUARIOS DEL EQUIPO CON LEGIBILIDAD AUMENTADA */}
+      {/* TABLA DE USUARIOS DEL EQUIPO */}
       <div className="bg-[#253443] border border-slate-700/50 rounded-2xl shadow-xl overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -315,19 +320,16 @@ export default function VendedoresPage() {
                       </div>
                       <div>
                         <div className="font-satoshi-black text-white text-sm">{u.nombre}</div>
-                        {/* LUMINOSIDAD Y CONTRASTE MEJORADO EN EL CORREO/USUARIO */}
-                        <div className="font-mono text-xs text-slate-300">{u.user}</div>
+                        <div className="font-mono text-xs text-slate-300">{u.user || u.email}</div>
                       </div>
                     </div>
                   </td>
 
                   <td className="p-4">
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-satoshi-black ${
-                      u.rol === 'ADMIN'
-                        ? 'bg-purple-950/80 text-purple-300 border border-purple-800/40'
-                        : (u.rol === 'GERENTE_BODEGA' ? 'bg-amber-950/80 text-amber-300 border border-amber-800/40' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40')
+                      u.rol === 'GERENTE_BODEGA' ? 'bg-amber-950/80 text-amber-300 border border-amber-800/40' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40'
                     }`}>
-                      {u.rol === 'ADMIN' ? 'ADMINISTRADOR' : (u.rol === 'GERENTE_BODEGA' ? 'GERENTE DE BODEGA' : 'VENDEDOR POS')}
+                      {u.rol === 'GERENTE_BODEGA' ? 'GERENTE DE BODEGA' : 'VENDEDOR POS'}
                     </span>
                   </td>
 
@@ -374,7 +376,7 @@ export default function VendedoresPage() {
             {usuariosFiltrados.length === 0 && (
               <tr>
                 <td colSpan={4} className="p-12 text-center text-[#A0AEC0] text-xs font-satoshi-regular">
-                  No se encontraron usuarios en la búsqueda.
+                  No hay miembros adicionales en el equipo. Presiona &quot;Añadir Miembro al Equipo&quot; para registrar cajeros o gerentes.
                 </td>
               </tr>
             )}
@@ -382,7 +384,7 @@ export default function VendedoresPage() {
         </table>
       </div>
 
-      {/* MODAL CREAR / EDITAR USUARIO CON SELECCIÓN DE MÚLTIPLES SEDES */}
+      {/* MODAL CREAR / EDITAR USUARIO DEL EQUIPO */}
       {showModal && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans space-y-4 max-h-[90vh] overflow-y-auto">
@@ -450,7 +452,6 @@ export default function VendedoresPage() {
                 >
                   <option value="VENDEDOR" className="bg-[#1D2935] text-white">🛒 Vendedor / Cajero POS (Caja Local)</option>
                   <option value="GERENTE_BODEGA" className="bg-[#1D2935] text-white">📦 Gerente de Bodega (Inventario & WMS)</option>
-                  <option value="ADMIN" className="bg-[#1D2935] text-white">👑 Administrador General (Acceso Total)</option>
                 </select>
               </div>
 
