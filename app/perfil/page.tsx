@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import '@/app/globals.css';
 
 export default function PerfilPage() {
   const [userAuth, setUserAuth] = useState<any>(null);
@@ -10,10 +11,25 @@ export default function PerfilPage() {
   
   const [originalData, setOriginalData] = useState<any>(null);
 
+  // LISTA EXCLUSIVA DE 11 PAÍSES LATAM CON BANDERAS
+  const paisesLatam = [
+    { codigo: '+57', nombre: 'Colombia (+57)', bandera: '🇨🇴' },
+    { codigo: '+593', nombre: 'Ecuador (+593)', bandera: '🇪🇨' },
+    { codigo: '+52', nombre: 'México (+52)', bandera: '🇲🇽' },
+    { codigo: '+595', nombre: 'Paraguay (+595)', bandera: '🇵🇾' },
+    { codigo: '+51', nombre: 'Perú (+51)', bandera: '🇵🇪' },
+    { codigo: '+56', nombre: 'Chile (+56)', bandera: '🇨🇱' },
+    { codigo: '+507', nombre: 'Panamá (+507)', bandera: '🇵🇦' },
+    { codigo: '+502', nombre: 'Guatemala (+502)', bandera: '🇬🇹' },
+    { codigo: '+55', nombre: 'Brasil (+55)', bandera: '🇧🇷' },
+    { codigo: '+54', nombre: 'Argentina (+54)', bandera: '🇦🇷' },
+    { codigo: '+58', nombre: 'Venezuela (+58)', bandera: '🇻🇪' },
+  ];
+
   // Formulario Perfil de Usuario
   const [nombre, setNombre] = useState('');
   const [userEmail, setUserEmail] = useState('');
-  const [prefijoPais, setPrefijoPais] = useState('+57');
+  const [prefijoPais, setPrefijoPais] = useState(''); // <-- Inicia vacío para obligar selección
   const [telefono, setTelefono] = useState('');
 
   // Módulo Seguridad Colapsable
@@ -25,7 +41,7 @@ export default function PerfilPage() {
   // Formulario Datos Legales (Conectado a 'Factura_Electronica')
   const [razonSocial, setRazonSocial] = useState('');
   const [nit, setNit] = useState('');
-  const [regimenFiscal, setRégimenFiscal] = useState('RESPONSABLE_IVA');
+  const [regimenFiscal, setRegimenFiscal] = useState('RESPONSABLE_IVA');
   const [pais, setPais] = useState('Colombia');
   const [ciudad, setCiudad] = useState('');
   const [telefonoCorp, setTelefonoCorp] = useState('');
@@ -34,12 +50,30 @@ export default function PerfilPage() {
 
   const [isSaving, setIsSaving] = useState(false);
 
+  // Función limpiadora de teléfono (evita duplicar el indicativo)
+  const extraerNumeroLocal = (telRaw: string) => {
+    if (!telRaw) return '';
+    let str = String(telRaw).trim();
+    const codigos = ['+593', '+507', '+506', '+502', '+503', '+504', '+505', '+591', '+595', '+598', '+57', '+52', '+54', '+56', '+51', '+58', '+55', '+1'];
+    for (const cod of codigos) {
+      if (str.startsWith(cod)) {
+        str = str.slice(cod.length).trim();
+        break;
+      }
+    }
+    return str.replace(/\D/g, '');
+  };
+
   useEffect(() => {
     const savedUser = localStorage.getItem('atom_user_session');
     if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      setUserAuth(parsed);
-      cargarDatosPerfilYCuenta(parsed);
+      try {
+        const parsed = JSON.parse(savedUser);
+        setUserAuth(parsed);
+        cargarDatosPerfilYCuenta(parsed);
+      } catch (e) {
+        console.error(e);
+      }
     }
   }, []);
 
@@ -47,7 +81,8 @@ export default function PerfilPage() {
     try {
       let uNom = session.nombre || '';
       let uUser = session.user || '';
-      let uTel = session.telefono || '';
+      let uPrefijo = session.indicativo_pais || ''; 
+      let uTel = extraerNumeroLocal(session.telefono || '');
       let rSoc = session.empresa || '';
       let nDoc = '';
       let regF = 'RESPONSABLE_IVA';
@@ -62,11 +97,12 @@ export default function PerfilPage() {
           const ud = uDoc.data();
           uNom = ud.nombre || uNom;
           uUser = ud.user || uUser;
-          uTel = ud.telefono || uTel;
+          uPrefijo = ud.indicativo_pais || uPrefijo; // Lee el indicativo real de Firestore
+          uTel = extraerNumeroLocal(ud.telefono || session.telefono || ''); // Lee y limpia el número real
         }
       }
 
-      // Consulta a la colección 'Factura_Electronica' usando el id_cuenta
+      // Consulta a la colección 'Factura_Electronica'
       if (session.id_cuenta) {
         const feDoc = await getDoc(doc(db, 'Factura_Electronica', session.id_cuenta));
         if (feDoc.exists()) {
@@ -79,7 +115,7 @@ export default function PerfilPage() {
           dirF = fd.direccion_fiscal || '';
           eFact = fd.email_facturacion || '';
         } else {
-          // Fallback a 'cuentas' en caso de que aún no exista el documento en 'Factura_Electronica'
+          // Fallback a 'cuentas'
           const cDoc = await getDoc(doc(db, 'cuentas', session.id_cuenta));
           if (cDoc.exists()) {
             const cd = cDoc.data();
@@ -91,10 +127,11 @@ export default function PerfilPage() {
 
       setNombre(uNom);
       setUserEmail(uUser);
+      setPrefijoPais(uPrefijo);
       setTelefono(uTel);
       setRazonSocial(rSoc);
       setNit(nDoc);
-      setRégimenFiscal(regF);
+      setRegimenFiscal(regF);
       setCiudad(cty);
       setTelefonoCorp(telC);
       setDireccionFiscal(dirF);
@@ -103,6 +140,7 @@ export default function PerfilPage() {
       setOriginalData({
         nombre: uNom,
         userEmail: uUser,
+        prefijoPais: uPrefijo,
         telefono: uTel,
         razonSocial: rSoc,
         nit: nDoc,
@@ -113,7 +151,8 @@ export default function PerfilPage() {
         emailFacturacion: eFact,
         passNueva: ''
       });
-    } catch (e) {
+    } catch (e: any) {
+      if (e.name === 'AbortError' || e.message?.includes('abort')) return;
       console.error('Error cargando perfil:', e);
     }
   };
@@ -122,6 +161,7 @@ export default function PerfilPage() {
     if (!originalData) return false;
     const cambioPerfil = 
       nombre !== originalData.nombre ||
+      prefijoPais !== originalData.prefijoPais ||
       telefono !== originalData.telefono ||
       passNueva.trim() !== '';
 
@@ -139,6 +179,10 @@ export default function PerfilPage() {
 
   const handleGuardarCambios = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!prefijoPais) return alert("Por favor selecciona el indicativo de tu país en la pestaña Perfil.");
+    if (!telefono.trim()) return alert("Por favor ingresa tu número de teléfono.");
+
     if (!hayCambios()) return;
 
     if (passNueva && passNueva !== passConfirm) {
@@ -147,11 +191,14 @@ export default function PerfilPage() {
 
     setIsSaving(true);
     try {
+      const numLimpio = extraerNumeroLocal(telefono);
+
       // 1. Actualizar usuario
       if (userAuth?.id_usuario) {
         const userUpdate: any = {
           nombre: nombre.trim(),
-          telefono: telefono.trim(),
+          telefono: numLimpio,
+          indicativo_pais: prefijoPais,
           fecha_actualizacion: new Date().toISOString()
         };
         if (passNueva.trim()) {
@@ -177,18 +224,27 @@ export default function PerfilPage() {
         };
 
         await setDoc(doc(db, 'Factura_Electronica', userAuth.id_cuenta), facturaElectronicaData, { merge: true });
+        
+        // También actualizar el teléfono en la colección cuentas si es admin
+        if (userAuth.rol === 'ADMIN') {
+          await setDoc(doc(db, 'cuentas', userAuth.id_cuenta), {
+            telefono_contacto: numLimpio,
+            indicativo_pais: prefijoPais
+          }, { merge: true });
+        }
       }
 
       const sessionObj = {
         ...userAuth,
         nombre: nombre.trim(),
-        telefono: telefono.trim(),
+        telefono: numLimpio,
+        indicativo_pais: prefijoPais,
         empresa: razonSocial.trim()
       };
       localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
       setUserAuth(sessionObj);
 
-      alert('¡Configuración guardada en Factura_Electronica correctamente!');
+      alert('¡Configuración guardada correctamente!');
       setPassActual('');
       setPassNueva('');
       setPassConfirm('');
@@ -197,7 +253,8 @@ export default function PerfilPage() {
       setOriginalData({
         nombre: nombre.trim(),
         userEmail,
-        telefono: telefono.trim(),
+        prefijoPais,
+        telefono: numLimpio,
         razonSocial: razonSocial.trim(),
         nit: nit.trim(),
         regimenFiscal,
@@ -323,15 +380,19 @@ export default function PerfilPage() {
                   </label>
                   <div className="flex gap-2">
                     <select
-                      className="bg-[#1D2935] border border-slate-700 text-slate-200 text-xs font-satoshi-black rounded-lg px-2.5 focus:outline-none focus:border-[#0DE8C0]"
+                      className={`bg-[#1D2935] border border-slate-700 text-xs font-satoshi-black rounded-lg px-2.5 focus:outline-none focus:border-[#0DE8C0] cursor-pointer ${
+                        !prefijoPais ? 'text-slate-400' : 'text-[#0DE8C0]'
+                      }`}
                       value={prefijoPais}
                       onChange={(e) => setPrefijoPais(e.target.value)}
+                      required
                     >
-                      <option value="+57">+57 (CO)</option>
-                      <option value="+1">+1 (US)</option>
-                      <option value="+52">+52 (MX)</option>
-                      <option value="+51">+51 (PE)</option>
-                      <option value="+56">+56 (CL)</option>
+                      <option value="" disabled className="text-slate-500 bg-[#1D2935]">Sel...</option>
+                      {paisesLatam.map((p) => (
+                        <option key={p.codigo} value={p.codigo} className="text-white bg-[#1D2935]">
+                          {p.bandera} {p.codigo}
+                        </option>
+                      ))}
                     </select>
                     <input
                       type="text"
@@ -339,6 +400,7 @@ export default function PerfilPage() {
                       placeholder="300 123 4567"
                       value={telefono}
                       onChange={(e) => setTelefono(e.target.value)}
+                      required
                     />
                   </div>
                 </div>
@@ -445,7 +507,7 @@ export default function PerfilPage() {
                     <select
                       className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-satoshi-black focus:outline-none cursor-pointer"
                       value={regimenFiscal}
-                      onChange={(e) => setRégimenFiscal(e.target.value)}
+                      onChange={(e) => setRegimenFiscal(e.target.value)}
                     >
                       <option value="RESPONSABLE_IVA">Responsable de IVA (Común)</option>
                       <option value="NO_RESPONSABLE_IVA">No Responsable de IVA (Simplificado)</option>
