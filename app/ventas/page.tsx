@@ -14,6 +14,9 @@ export default function VentasPage() {
   // Pestañas Principales: Nueva Venta POS / Historial
   const [activeTab, setActiveTab] = useState<'POS' | 'HISTORIAL'>('POS');
 
+  // CONTROL DE VISTA DE PRODUCTOS: TARJETAS O TABLA
+  const [viewModeProd, setViewModeProd] = useState<'TARJETAS' | 'TABLA'>('TARJETAS');
+
   // Estado POS (Terminal)
   const [sedeDespacho, setSedeDespacho] = useState<string>('');
   const [searchProd, setSearchQueryProd] = useState('');
@@ -22,9 +25,9 @@ export default function VentasPage() {
   const [montoPagaCon, setMontoPagaCon] = useState<number>(0);
   const [ivaIncluido, setIvaIncluido] = useState<boolean>(true);
 
-  // BUSCADOR INTELIGENTE DE CLIENTES
+  // BUSCADOR INTELIGENTE DE CLIENTES (INICIA EN BLANCO SIN SELECCIÓN PREDETERMINADA)
   const [clienteSearch, setClienteSearch] = useState('');
-  const [clienteSelObj, setClienteSelObj] = useState<any>({ nit: 'CF_GENERAL', nombre: 'Consumidor Final (CF)' });
+  const [clienteSelObj, setClienteSelObj] = useState<any>(null);
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
   const clienteRef = useRef<HTMLDivElement>(null);
 
@@ -263,11 +266,16 @@ export default function VentasPage() {
     String(c.nit || c.id_cliente || '').toLowerCase().includes(clienteSearch.toLowerCase())
   );
 
-  // PROCESAR COBRO POS CON AUDITORÍA PREVIA DE INVENTARIOS
+  // PROCESAR COBRO POS CON VALIDACIÓN OBLIGATORIA DE SELECCIÓN DE CLIENTE
   const handleCobrarVenta = async () => {
     const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
     if (cart.length === 0) return alert('El carrito está vacío. Selecciona al menos un producto.');
     if (!sedeEfectiva) return alert('Por favor selecciona la sede de despacho.');
+    
+    // VALIDACIÓN OBLIGATORIA: DEBE ELEGIR UN CLIENTE O CONSUMIDOR FINAL
+    if (!clienteSelObj) {
+      return alert('⚠️ Por favor selecciona un cliente (o elige Consumidor Final) para continuar con la venta.');
+    }
 
     // VERIFICACIÓN INTEGRAL DE STOCK ANTES DEL REGISTRO FINAL
     for (const item of cart) {
@@ -348,6 +356,8 @@ export default function VentasPage() {
       setMontoPagaCon(0);
       setMontoDescuento('');
       setMotivoDescuento('');
+      setClienteSelObj(null);
+      setClienteSearch('');
       setSelectedVentaTicket(ventaData);
       setShowTicketModal(true);
     } catch (err: any) {
@@ -356,6 +366,37 @@ export default function VentasPage() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // ENVÍO DEL COMPROBANTE POR WHATSAPP
+  const handleEnviarWhatsAppTicket = (ticket: any) => {
+    if (!ticket) return;
+
+    const rawTel = ticket.cliente_telefono ? String(ticket.cliente_telefono).replace(/\D/g, '') : '';
+    const numFinal = rawTel.length === 10 ? `57${rawTel}` : rawTel;
+
+    let mensaje = `🧾 *COMPROBANTE FISCAL DE VENTA*\n`;
+    mensaje += `*N° Factura:* ${ticket.id_factura}\n`;
+    mensaje += `*Sede:* ${ticket.nombre_bodega || 'Sede Principal'}\n`;
+    mensaje += `*Fecha:* ${new Date(ticket.fecha_cobro || ticket.fecha).toLocaleString()}\n\n`;
+    mensaje += `👤 *Cliente:* ${ticket.cliente_nombre}\n`;
+    mensaje += `💳 *Método de Pago:* ${ticket.metodo_pago}\n\n`;
+    mensaje += `🛒 *Detalle de Productos:*\n`;
+
+    if (Array.isArray(ticket.items)) {
+      ticket.items.forEach((it: any) => {
+        mensaje += `• ${it.nombre} (${it.cantidad}x) - ${formatoCOP(it.precio * it.cantidad)}\n`;
+      });
+    }
+
+    mensaje += `\n*TOTAL PAGADO:* ${formatoCOP(ticket.total)}\n\n`;
+    mensaje += `¡Gracias por tu compra! 🙌`;
+
+    const url = numFinal 
+      ? `https://api.whatsapp.com/send?phone=${numFinal}&text=${encodeURIComponent(mensaje)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(mensaje)}`;
+
+    window.open(url, '_blank');
   };
 
   // Modal Anular
@@ -435,7 +476,7 @@ export default function VentasPage() {
            String(v.nombre_bodega || '').toLowerCase().includes(q);
   });
 
-  // DETERMINAR LA SEDE ACTIVA GARANTIZADA (EVITA EL VALOR EN BLANCO INICIAL)
+  // DETERMINAR LA SEDE ACTIVA GARANTIZADA
   const sucsActivas = sucursales.filter(s => s.estado !== 'INACTIVA');
   const sedeGarantizada = sedeDespacho || (sucsActivas.length > 0 ? sucsActivas[0].id_sucursal : '');
 
@@ -475,7 +516,7 @@ export default function VentasPage() {
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 00-4zm-8 2a2 2 0 00-2 2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 00-2 2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <span>Caja Registrar (POS)</span>
           </button>
@@ -517,72 +558,151 @@ export default function VentasPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2 bg-[#1D2935] px-3.5 py-2 rounded-xl border border-slate-700/80 shrink-0 select-none">
-                <input
-                  type="checkbox"
-                  id="ivaCheck"
-                  checked={ivaIncluido}
-                  onChange={(e) => setIvaIncluido(e.target.checked)}
-                  className="rounded bg-[#253443] border-slate-700 text-[#0DE8C0] focus:ring-0 w-4 h-4 cursor-pointer"
-                />
-                <label htmlFor="ivaCheck" className="text-xs font-satoshi-black text-slate-200 cursor-pointer">
-                  IVA Incluido en Precio
-                </label>
+              {/* CONTROLES: CONMUTADOR VISTA TARJETAS / TABLA + IVA */}
+              <div className="flex items-center gap-2">
+                <div className="bg-[#1D2935] p-1 rounded-xl flex items-center gap-1 border border-slate-700 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewModeProd('TARJETAS')}
+                    className={`p-1.5 rounded-lg text-xs font-satoshi-black transition ${
+                      viewModeProd === 'TARJETAS' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'text-[#A0AEC0] hover:text-white'
+                    }`}
+                    title="Vista Tarjetas"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewModeProd('TABLA')}
+                    className={`p-1.5 rounded-lg text-xs font-satoshi-black transition ${
+                      viewModeProd === 'TABLA' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'text-[#A0AEC0] hover:text-white'
+                    }`}
+                    title="Vista Tabla"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 bg-[#1D2935] px-3.5 py-2 rounded-xl border border-slate-700/80 shrink-0 select-none">
+                  <input
+                    type="checkbox"
+                    id="ivaCheck"
+                    checked={ivaIncluido}
+                    onChange={(e) => setIvaIncluido(e.target.checked)}
+                    className="rounded bg-[#253443] border-slate-700 text-[#0DE8C0] focus:ring-0 w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="ivaCheck" className="text-xs font-satoshi-black text-slate-200 cursor-pointer">
+                    IVA Incluido
+                  </label>
+                </div>
               </div>
             </div>
 
-            {/* GRID DE PRODUCTOS FILTRADOS POR LA SEDE SELECCIONADA */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
-              {productosPOS.map((prod, idx) => {
-                const stockSede = Number(prod.stock?.[sedeGarantizada] || 0);
-                const tarifaIvaProd = prod.iva !== undefined ? Number(prod.iva) : 19;
+            {/* VISTA 1: GRID DE PRODUCTOS EN TARJETAS */}
+            {viewModeProd === 'TARJETAS' && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+                {productosPOS.map((prod, idx) => {
+                  const stockSede = Number(prod.stock?.[sedeGarantizada] || 0);
+                  const tarifaIvaProd = prod.iva !== undefined ? Number(prod.iva) : 19;
 
-                return (
-                  <div
-                    key={prod.sku || idx}
-                    onClick={() => addToCart(prod)}
-                    className="bg-[#253443] border border-slate-700/60 hover:border-[#0DE8C0] rounded-xl p-3 shadow-md flex flex-col justify-between transition-all duration-200 cursor-pointer active:scale-95 group"
-                  >
-                    <div>
-                      <div className="w-full h-24 rounded-lg bg-[#1D2935] border border-slate-700/80 mb-2 overflow-hidden flex items-center justify-center shrink-0">
-                        {prod.imagen_url ? (
-                          <img src={prod.imagen_url} alt={prod.nombre} className="w-full h-full object-cover group-hover:scale-105 transition" />
-                        ) : (
-                          <svg className="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                          </svg>
-                        )}
-                      </div>
-
-                      <h4 className="font-satoshi-black text-xs text-white uppercase truncate line-clamp-1">
-                        {prod.nombre}
-                      </h4>
-                      <p className="font-mono text-[10px] text-[#A0AEC0]">SKU: {prod.sku}</p>
-                    </div>
-
-                    <div className="mt-3 pt-2 border-t border-slate-700/60 flex items-center justify-between">
+                  return (
+                    <div
+                      key={prod.sku || idx}
+                      onClick={() => addToCart(prod)}
+                      className="bg-[#253443] border border-slate-700/60 hover:border-[#0DE8C0] rounded-xl p-3 shadow-md flex flex-col justify-between transition-all duration-200 cursor-pointer active:scale-95 group"
+                    >
                       <div>
-                        <span className="font-satoshi-black text-sm text-[#0DE8C0] block">
-                          {formatoCOP(prod.plocal || prod.precio || 0)}
-                        </span>
-                        <span className="text-[9px] text-[#A0AEC0] block font-mono">
-                          IVA: {tarifaIvaProd}%
+                        <div className="w-full h-24 rounded-lg bg-[#1D2935] border border-slate-700/80 mb-2 overflow-hidden flex items-center justify-center shrink-0">
+                          {prod.imagen_url ? (
+                            <img src={prod.imagen_url} alt={prod.nombre} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                          ) : (
+                            <svg className="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                          )}
+                        </div>
+
+                        <h4 className="font-satoshi-black text-xs text-white uppercase truncate line-clamp-1">
+                          {prod.nombre}
+                        </h4>
+                        <p className="font-mono text-[10px] text-[#A0AEC0]">SKU: {prod.sku}</p>
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-slate-700/60 flex items-center justify-between">
+                        <div>
+                          <span className="font-satoshi-black text-sm text-[#0DE8C0] block">
+                            {formatoCOP(prod.plocal || prod.precio || 0)}
+                          </span>
+                          <span className="text-[9px] text-[#A0AEC0] block font-mono">
+                            IVA: {tarifaIvaProd}%
+                          </span>
+                        </div>
+                        <span className="text-[9px] font-satoshi-black px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                          Stk: {stockSede}
                         </span>
                       </div>
-                      <span className="text-[9px] font-satoshi-black px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                        Stk: {stockSede}
-                      </span>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
 
-              {productosPOS.length === 0 && (
-                <div className="col-span-full text-center py-12 bg-[#253443] rounded-2xl border border-slate-700/60 p-6 text-[#A0AEC0] text-xs font-satoshi-regular">
-                  No hay productos disponibles con stock en la sede seleccionada.
-                </div>
-              )}
-            </div>
+                {productosPOS.length === 0 && (
+                  <div className="col-span-full text-center py-12 bg-[#253443] rounded-2xl border border-slate-700/60 p-6 text-[#A0AEC0] text-xs font-satoshi-regular">
+                    No hay productos disponibles con stock en la sede seleccionada.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VISTA 2: TABLA DE PRODUCTOS */}
+            {viewModeProd === 'TABLA' && (
+              <div className="bg-[#253443] border border-slate-700/60 rounded-2xl shadow-lg max-h-[calc(100vh-280px)] overflow-y-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-[#1D2935] text-[11px] font-satoshi-black text-[#A0AEC0] uppercase border-b border-slate-700">
+                      <th className="p-3">Producto</th>
+                      <th className="p-3 text-center">SKU</th>
+                      <th className="p-3 text-center">Stock Sede</th>
+                      <th className="p-3 text-right">Precio Unitario</th>
+                      <th className="p-3 text-center">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/60 font-satoshi-regular">
+                    {productosPOS.map((prod, idx) => {
+                      const stockSede = Number(prod.stock?.[sedeGarantizada] || 0);
+
+                      return (
+                        <tr key={prod.sku || idx} className="hover:bg-[#1D2935]/80 transition">
+                          <td className="p-3 font-satoshi-black text-white">{prod.nombre}</td>
+                          <td className="p-3 text-center font-mono text-[#A0AEC0]">{prod.sku}</td>
+                          <td className="p-3 text-center font-mono font-bold text-slate-200">{stockSede} unds</td>
+                          <td className="p-3 text-right font-satoshi-black text-[#0DE8C0]">{formatoCOP(prod.plocal || prod.precio || 0)}</td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => addToCart(prod)}
+                              className="bg-[#0DE8C0] text-[#1D2935] font-satoshi-black px-2.5 py-1 rounded-lg text-xs hover:bg-[#0bcfa8]"
+                            >
+                              + Agregar
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {productosPOS.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-[#A0AEC0]">No hay productos con stock en esta sede.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
           </div>
 
           {/* SECCIÓN DERECHA: COBRO Y DESCUENTOS AUDITABLES */}
@@ -608,7 +728,7 @@ export default function VentasPage() {
               <select
                 className="bg-[#1D2935] border border-slate-700 text-xs font-satoshi-black text-[#0DE8C0] rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer shrink-0 disabled:opacity-60"
                 value={sedeGarantizada}
-                onChange={(e) => setSedeDespacho(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSedeDespacho(e.target.value)}
                 disabled={esVendedor}
               >
                 {sucsActivas.map((s, idx) => (
@@ -713,30 +833,34 @@ export default function VentasPage() {
                   </div>
                 </div>
 
-                {/* BUSCADOR DE CLIENTES CORREGIDO: AUTO-LIMPIEZA AL HACER FOCUS Y DESPLEGABLE HACIA ABAJO */}
+                {/* BUSCADOR DE CLIENTES SIN VALOR PREDETERMINADO OBLIGATORIO */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative" ref={clienteRef}>
-                    <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">Buscar Cliente</label>
+                    <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">
+                      Buscar Cliente *
+                    </label>
                     <input
                       type="text"
-                      placeholder="Nombre o Cédula..."
-                      className="w-full bg-[#1D2935] border border-slate-700 text-xs text-white rounded-xl p-2 focus:outline-none focus:border-[#0DE8C0] font-satoshi-black"
-                      value={clienteSearch || clienteSelObj.nombre}
+                      placeholder="-- Seleccionar Cliente --"
+                      className={`w-full bg-[#1D2935] border text-xs text-white rounded-xl p-2 focus:outline-none font-satoshi-black ${
+                        clienteSelObj ? 'border-[#0DE8C0]' : 'border-slate-700 focus:border-[#0DE8C0]'
+                      }`}
+                      value={clienteSearch || (clienteSelObj ? clienteSelObj.nombre : '')}
                       onFocus={() => {
-                        if (clienteSelObj.nit === 'CF_GENERAL') {
-                          setClienteSearch('');
-                        } else {
+                        if (clienteSelObj) {
                           setClienteSearch(clienteSelObj.nombre);
+                        } else {
+                          setClienteSearch('');
                         }
                         setShowClienteDropdown(true);
                       }}
-                      onChange={(e) => {
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         setClienteSearch(e.target.value);
                         setShowClienteDropdown(true);
                       }}
                     />
 
-                    {/* POPUP DE SELECCIÓN DE CLIENTE DESPLEGABLE HACIA ABAJO (TOP-FULL Z-[100]) */}
+                    {/* POPUP DE SELECCIÓN DE CLIENTE DESPLEGABLE HACIA ABAJO */}
                     {showClienteDropdown && (
                       <div className="absolute left-0 right-0 top-full mt-1 bg-[#1D2935] border border-slate-700 rounded-xl shadow-2xl max-h-48 overflow-y-auto z-[100] divide-y divide-slate-800 text-xs">
                         <div
@@ -745,9 +869,10 @@ export default function VentasPage() {
                             setClienteSearch('');
                             setShowClienteDropdown(false);
                           }}
-                          className="p-2.5 hover:bg-[#253443] cursor-pointer text-[#0DE8C0] font-satoshi-black"
+                          className="p-2.5 hover:bg-[#253443] cursor-pointer text-[#0DE8C0] font-satoshi-black flex justify-between items-center"
                         >
-                          Consumidor Final (CF)
+                          <span>Consumidor Final (CF)</span>
+                          <span className="text-[10px] bg-[#0DE8C0]/10 px-2 py-0.5 rounded">Elegir</span>
                         </div>
 
                         {clientesFiltradosPOS.map((cli, idx) => (
@@ -758,10 +883,13 @@ export default function VentasPage() {
                               setClienteSearch('');
                               setShowClienteDropdown(false);
                             }}
-                            className="p-2.5 hover:bg-[#253443] cursor-pointer text-slate-200"
+                            className="p-2.5 hover:bg-[#253443] cursor-pointer text-slate-200 flex justify-between items-center"
                           >
-                            <div className="font-satoshi-black text-white">{cli.nombre}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">NIT/ID: {cli.nit || cli.id_cliente}</div>
+                            <div>
+                              <div className="font-satoshi-black text-white">{cli.nombre}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">NIT/ID: {cli.nit || cli.id_cliente}</div>
+                            </div>
+                            <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">Elegir</span>
                           </div>
                         ))}
 
@@ -777,7 +905,7 @@ export default function VentasPage() {
                     <select
                       className="w-full bg-[#1D2935] border border-slate-700 text-xs text-white font-satoshi-black rounded-xl p-2 focus:outline-none"
                       value={metodoPago}
-                      onChange={(e: any) => setMetodoPago(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMetodoPago(e.target.value as any)}
                     >
                       <option value="EFECTIVO">Efectivo</option>
                       <option value="TRANSFERENCIA">Transferencia / Nequi</option>
@@ -955,7 +1083,7 @@ export default function VentasPage() {
         </div>
       )}
 
-      {/* MODAL COMPROBANTE FISCAL / TICKET TIPO PAPEL TÉRMICO */}
+      {/* MODAL COMPROBANTE FISCAL / TICKET TIPO PAPEL TÉRMICO CON IMPRESIÓN Y WHATSAPP */}
       {showTicketModal && selectedVentaTicket && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
           <div className="bg-white text-slate-900 rounded-3xl w-full max-w-md p-8 shadow-2xl font-mono text-xs relative space-y-5 border border-slate-200">
@@ -1043,8 +1171,19 @@ export default function VentasPage() {
               </div>
             </div>
 
-            {/* BOTÓN IMPRIMIR COMPROBANTE PDF CON TONO TURQUESA NEÓN (#0DE8C0) */}
-            <div className="pt-2">
+            {/* BOTONES DE IMPRESIÓN PDF Y ENVÍO POR WHATSAPP */}
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                onClick={() => handleEnviarWhatsAppTicket(selectedVentaTicket)}
+                className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-satoshi-black py-3 rounded-2xl text-xs uppercase tracking-wider transition-all duration-300 shadow-md flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.653-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.633.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+                </svg>
+                <span>ENVIAR COMPROBANTE POR WHATSAPP</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => window.print()}
