@@ -365,10 +365,10 @@ export default function ProductosPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CSV CON DETECCIÓN Y ACTUALIZACIÓN INTELIGENTE DE SKU DUPLICADOS
+  // PROCESAR CARGA MASIVA CSV CON VALIDACIÓN ESTRICTA DE ENCABEZADOS Y SEGURIDAD
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fileMasivo) return alert('Por favor selecciona un archivo CSV o Excel.');
+    if (!fileMasivo) return alert('Por favor selecciona un archivo CSV.');
 
     setLoadingMasivo(true);
     const reader = new FileReader();
@@ -387,30 +387,57 @@ export default function ProductosPage() {
         }
 
         const separador = lines[0].includes(';') ? ';' : ',';
+        const headers = lines[0].split(separador).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
+
+        // COLUMNAS CLAVE OBLIGATORIAS DE LA PLANTILLA OFICIAL DE PRODUCTOS
+        const columnasRequeridas = ['sku', 'nombre', 'categoria', 'precio_tienda_fisica'];
+        const columnasFaltantes = columnasRequeridas.filter(col => !headers.includes(col));
+
+        if (columnasFaltantes.length > 0) {
+          alert(`⛔ Formato Inválido:\n\nEl archivo cargado no coincide con la plantilla oficial de productos.\nFaltan las siguientes columnas obligatorias: [ ${columnasFaltantes.join(', ')} ]\n\nPor favor descarga la plantilla CSV oficial e inténtalo de nuevo.`);
+          setLoadingMasivo(false);
+          return;
+        }
+
+        // Mapeo dinámico de posiciones de columnas según el encabezado
+        const idxSku = headers.indexOf('sku');
+        const idxNombre = headers.indexOf('nombre');
+        const idxCat = headers.indexOf('categoria');
+        const idxPMayor = headers.indexOf('precio_al_por_mayor');
+        const idxPPos = headers.indexOf('precio_tienda_fisica');
+        const idxPEcom = headers.indexOf('precio_ecommerce');
+        const idxIvaInclu = headers.indexOf('iva_incluido');
+        const idxTarifaIva = headers.indexOf('iva_porcentaje');
+        const idxCostoImp = headers.indexOf('costo_importacion_o_fabricacion');
+        const idxCostoFul = headers.indexOf('costo_fulfilment');
+        const idxStock = headers.indexOf('stock_total');
+        const idxSede = headers.indexOf('sede');
+
         const idSedeDefecto = userAuth?.id_sucursal || (sucursales.length > 0 ? sucursales[0].id_sucursal : 'SUC_PRINCIPAL');
         let nuevosCreados = 0;
         let actualizados = 0;
 
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
-          if (cols.length >= 2 && cols[0] !== '') {
-            const skuClean = cols[0].toUpperCase();
-            const nombreProd = cols[1] || 'Producto Sin Nombre';
-            const catProd = (cols[2] || 'GENERAL').toUpperCase();
-            const precioMayor = parseMontoPuro(cols[3]);
-            const precioFisica = parseMontoPuro(cols[4]) || precioMayor;
-            const precioEcom = parseMontoPuro(cols[5]) || precioFisica;
+          if (cols.length >= 2 && cols[idxSku] && cols[idxSku] !== '') {
+            const skuClean = cols[idxSku].toUpperCase();
+            const nombreProd = cols[idxNombre] || 'Producto Sin Nombre';
+            const catProd = (cols[idxCat] || 'GENERAL').toUpperCase();
+            
+            const precioMayor = idxPMayor !== -1 ? parseMontoPuro(cols[idxPMayor]) : 0;
+            const precioFisica = parseMontoPuro(cols[idxPPos]) || precioMayor;
+            const precioEcom = idxPEcom !== -1 ? (parseMontoPuro(cols[idxPEcom]) || precioFisica) : precioFisica;
 
             // RECONOCIMIENTO DE IVA
-            const ivaIncluText = (cols[6] || 'SI').toUpperCase();
+            const ivaIncluText = idxIvaInclu !== -1 ? (cols[idxIvaInclu] || 'SI').toUpperCase() : 'SI';
             const aplicaIvaBool = ivaIncluText === 'SI' || ivaIncluText === '1' || ivaIncluText === 'TRUE';
-            const tarifaIvaNum = aplicaIvaBool ? (parseMontoPuro(cols[7]) || 19) : 0;
+            const tarifaIvaNum = aplicaIvaBool ? (idxTarifaIva !== -1 ? (parseMontoPuro(cols[idxTarifaIva]) || 19) : 19) : 0;
 
             // COSTOS DE FABRICACIÓN / COMPRA Y FULFILLMENT
-            const costoImp = parseMontoPuro(cols[8]);
-            const costoFul = parseMontoPuro(cols[9]);
-            const stockCant = parseMontoPuro(cols[10]);
-            const sedeNombreInput = cols[11] || '';
+            const costoImp = idxCostoImp !== -1 ? parseMontoPuro(cols[idxCostoImp]) : 0;
+            const costoFul = idxCostoFul !== -1 ? parseMontoPuro(cols[idxCostoFul]) : 0;
+            const stockCant = idxStock !== -1 ? parseMontoPuro(cols[idxStock]) : 0;
+            const sedeNombreInput = idxSede !== -1 ? cols[idxSede] : '';
 
             let idSedeDestino = idSedeDefecto;
             if (sedeNombreInput) {
@@ -425,20 +452,18 @@ export default function ProductosPage() {
 
             const { base, iva } = calcularBaseEIVA(precioFisica, tarifaIvaNum, aplicaIvaBool);
 
-            // ANALIZAR SI EL SKU YA EXISTE EN FIRESTORE
             const docRef = doc(db, 'productos', skuClean);
             const docSnap = await getDoc(docRef);
             const fechaActualISO = new Date().toISOString();
 
             if (docSnap.exists()) {
-              // ACTUALIZAR REGISTRO DUPLICADO A LA ÚLTIMA INFORMACIÓN RECIBIDA
               const dataExistente = docSnap.data();
               const stockExistente = dataExistente.stock || {};
               const historialExistente = Array.isArray(dataExistente.historial_cambios) ? dataExistente.historial_cambios : [];
 
               const nuevoStockActualizado = {
                 ...stockExistente,
-                [idSedeDestino]: stockCant // Actualiza o añade el stock para la sede indicada
+                [idSedeDestino]: stockCant
               };
 
               const nuevoCambioActualizacion = {
@@ -446,7 +471,7 @@ export default function ProductosPage() {
                 usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
                 usuario_id: userAuth?.id_usuario || '',
                 usuario_rol: userAuth?.rol || 'ADMIN',
-                motivo: `Actualización Masiva via CSV (Valores y Stock en Sede: ${idSedeDestino})`
+                motivo: `Actualización Masiva via CSV (Sede: ${idSedeDestino})`
               };
 
               const prodActualizadoObj = {
@@ -475,7 +500,6 @@ export default function ProductosPage() {
               await setDoc(docRef, prodActualizadoObj, { merge: true });
               actualizados++;
             } else {
-              // CREAR NUEVO REGISTRO DESDE CERO
               const prodNuevoObj = {
                 id_cuenta: userAuth.id_cuenta,
                 sku: skuClean,
@@ -515,7 +539,7 @@ export default function ProductosPage() {
           }
         }
 
-        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Nuevos Registrados: ${nuevosCreados}\n🔄 Duplicados Actualizados a última versión: ${actualizados}`);
+        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Nuevos Registrados: ${nuevosCreados}\n🔄 Actualizados a última versión: ${actualizados}`);
         setFileMasivo(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         setShowModalMasivo(false);
@@ -526,7 +550,6 @@ export default function ProductosPage() {
         setLoadingMasivo(false);
       }
     };
-
     reader.readAsText(fileMasivo);
   };
 
@@ -1456,7 +1479,7 @@ export default function ProductosPage() {
                   disabled={loadingMasivo || !fileMasivo}
                   className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  {loadingMasivo ? 'Importando...' : 'Procesar e Indexar'}
+                  {loadingMasivo ? 'Importando...' : ' Procesar e Indexar'}
                 </button>
               </div>
             </form>
