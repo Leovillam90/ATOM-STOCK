@@ -149,7 +149,7 @@ export default function TrasladosPage() {
         items: itemsTraslado,
         estado: 'EN_TRANSITO',
         fecha_envio: fechaISO,
-        usuario_envia: userAuth.nombre
+        usuario_envia: userAuth.nombre || 'Usuario ATOM'
       });
 
       // 2. Restar stock de la bodega de ORIGEN
@@ -184,7 +184,7 @@ export default function TrasladosPage() {
   };
 
   // ==========================================
-  // PASO 2: RECIBIR TRASLADO (SUMA STOCK)
+  // PASO 2: RECIBIR TRASLADO (SUMA STOCK Y REGISTRA RECEPTOR)
   // ==========================================
   const handleRecibirTraslado = async (traslado: any) => {
     if (!confirm('¿Confirmas que recibiste la mercancía físicamente en la sede de destino?')) return;
@@ -193,12 +193,12 @@ export default function TrasladosPage() {
       const batch = writeBatch(db);
       const fechaISO = new Date().toISOString();
 
-      // 1. Cambiar estado del traslado
+      // 1. Cambiar estado del traslado y registrar usuario receptor + fecha
       const trasladoRef = doc(db, 'traslados', traslado.id_traslado);
       batch.set(trasladoRef, {
         estado: 'COMPLETADO',
         fecha_recepcion: fechaISO,
-        usuario_recibe: userAuth.nombre
+        usuario_recibe: userAuth.nombre || 'Usuario ATOM'
       }, { merge: true });
 
       // 2. Sumar stock a la bodega de DESTINO e inyectar auditoría
@@ -311,7 +311,7 @@ export default function TrasladosPage() {
       <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-4 mb-8 flex flex-wrap gap-4 items-center justify-between">
         <input 
           type="text" 
-          className="bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 w-full md:w-80"
+          className="bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 w-full md:w-80 focus:outline-none"
           placeholder="Buscar ID, Origen o Destino..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -337,25 +337,40 @@ export default function TrasladosPage() {
         {filtrados.map((t, idx) => (
           <div key={idx} className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             
-            <div>
-              <div className="flex items-center gap-3 mb-2">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
                 <span className="font-mono text-xs text-[#0DE8C0] bg-[#1D2935] px-2 py-1 rounded border border-slate-700">
                   {t.id_traslado}
                 </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-satoshi-black ${
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-satoshi-black ${
                   t.estado === 'EN_TRANSITO' ? 'bg-amber-950/80 text-amber-400 border border-amber-800/40' : 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40'
                 }`}>
                   {t.estado.replace('_', ' ')}
                 </span>
               </div>
+
               <div className="flex items-center gap-3 text-sm font-satoshi-black text-white">
                 <span className="text-slate-400">De:</span> {t.origen_nombre}
                 <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                 <span className="text-slate-400">Hacia:</span> {t.destino_nombre}
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Enviado por {t.usuario_envia} el {new Date(t.fecha_envio).toLocaleString()}
-              </p>
+
+              {/* TRAZABILIDAD Y AUDITORÍA DE USUARIOS */}
+              <div className="space-y-1 pt-1 border-t border-slate-700/40 text-[11px]">
+                <div className="text-slate-300 flex items-center gap-1">
+                  <span className="text-slate-500 font-satoshi-black">ENVÍA:</span> 
+                  <span className="font-satoshi-black text-white">{t.usuario_envia || 'N/A'}</span>
+                  <span className="text-slate-500 font-mono text-[10px]">({new Date(t.fecha_envio).toLocaleString()})</span>
+                </div>
+
+                {t.estado === 'COMPLETADO' && (
+                  <div className="text-emerald-400 flex items-center gap-1">
+                    <span className="text-emerald-600 font-satoshi-black">RECIBE:</span> 
+                    <span className="font-satoshi-black text-emerald-300">{t.usuario_recibe || 'N/A'}</span>
+                    <span className="text-slate-500 font-mono text-[10px]">({t.fecha_recepcion ? new Date(t.fecha_recepcion).toLocaleString() : 'N/A'})</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 max-w-sm bg-[#1D2935] p-3 rounded-xl border border-slate-700">
