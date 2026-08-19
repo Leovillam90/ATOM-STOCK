@@ -8,7 +8,7 @@ export default function PerfilPage() {
   const [userAuth, setUserAuth] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  // LISTA EXCLUSIVA DE 11 PAÍSES LATAM
+  // LISTA EXCLUSIVA DE 11 PAÍSES LATAM SINCRONIZADA CON EL REGISTRO
   const paisesLatam = [
     { codigo: '+57', nombre: 'Colombia (+57)', bandera: '🇨🇴' },
     { codigo: '+593', nombre: 'Ecuador (+593)', bandera: '🇪🇨' },
@@ -38,52 +38,31 @@ export default function PerfilPage() {
   const [confirmPass, setConfirmPass] = useState('');
   const [savingPass, setSavingPass] = useState(false);
 
-  // FUNCIÓN DE LIMPIEZA PROFUNDA DE TELÉFONOS (Extrae el número local sin el indicativo)
-  const extraerNumeroLocal = (telRaw: string, indicativoActual: string) => {
-    if (!telRaw) return '';
-    let str = String(telRaw).trim();
-
-    // Remover todos los indicativos de LATAM conocidos si están al inicio
-    const codigos = ['+593', '+507', '+506', '+502', '+503', '+504', '+505', '+591', '+595', '+598', '+57', '+52', '+54', '+56', '+51', '+58', '+55', '+1'];
-    
-    let huboCambio = true;
-    while (huboCambio) {
-      huboCambio = false;
-      for (const cod of codigos) {
-        if (str.startsWith(cod)) {
-          str = str.slice(cod.length).trim();
-          huboCambio = true;
-          break;
-        }
-      }
-    }
-
-    // Extraer solo los dígitos restantes
-    let digitos = str.replace(/\D/g, '');
-
-    // Caso especial Colombia: Si empieza con 57 y tiene 12 dígitos (ej: 573138712634), quitar el 57 inicial
-    if (indicativoActual === '+57' && digitos.startsWith('57') && digitos.length === 12) {
-      digitos = digitos.slice(2);
-    }
-
-    return digitos;
-  };
-
   useEffect(() => {
     const savedUser = localStorage.getItem('atom_user_session');
     if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      setUserAuth(parsed);
-      cargarDatosPerfil(parsed);
+      try {
+        const parsed = JSON.parse(savedUser);
+        setUserAuth(parsed);
+        // Cargar inmediatamente Firestore pasando los datos guardados
+        cargarDatosPerfil(parsed);
+      } catch (e) {
+        console.error(e);
+      }
     }
   }, []);
 
   const cargarDatosPerfil = async (session: any) => {
+    // 1. Carga inicial desde la sesión local para que la UI responda rápido
     setNombre(session.nombre || '');
     setEmail(session.email || session.user || '');
     setEmpresa(session.empresa || 'ATOM STOCK');
     setRol(session.rol || 'ADMIN');
 
+    if (session.indicativo_pais) setIndicativoPais(session.indicativo_pais);
+    if (session.telefono) setTelefono(String(session.telefono).replace(/\D/g, ''));
+
+    // 2. LECTURA DIRECTA Y OBLIGATORIA DESDE FIRESTORE PARA OBTENER LOS DATOS REALES
     try {
       if (session.id_usuario) {
         const docUserRef = doc(db, 'usuarios', session.id_usuario);
@@ -91,23 +70,37 @@ export default function PerfilPage() {
 
         if (docUserSnap.exists()) {
           const data = docUserSnap.data();
-          setNombre(data.nombre || session.nombre || '');
-          setEmail(data.email || data.user || session.email || '');
-          setRol(data.rol || session.rol || 'ADMIN');
 
-          const ind = data.indicativo_pais || session.indicativo_pais || '+57';
-          setIndicativoPais(ind);
+          // Extraemos los datos frescos de la BD
+          const nombreReal = data.nombre || session.nombre || '';
+          const emailReal = data.email || data.user || session.email || '';
+          const rolReal = data.rol || session.rol || 'ADMIN';
+          const indicativoReal = data.indicativo_pais || session.indicativo_pais || '+57';
+          const telReal = String(data.telefono || session.telefono || '').replace(/\D/g, '');
 
-          const rawTel = data.telefono || session.telefono || '';
-          setTelefono(extraerNumeroLocal(rawTel, ind));
-        } else {
-          const ind = session.indicativo_pais || '+57';
-          setIndicativoPais(ind);
-          setTelefono(extraerNumeroLocal(session.telefono || '', ind));
+          // Seteamos la pantalla con lo de Firestore
+          setNombre(nombreReal);
+          setEmail(emailReal);
+          setRol(rolReal);
+          setIndicativoPais(indicativoReal); // AQUÍ SE ASIGNA EL INDICATIVO REAL DE TU PAÍS (+51, +593, etc.)
+          setTelefono(telReal);              // AQUÍ SE ASIGNA EL NÚMERO LIMPIO SIN DUPLICAR
+
+          // Actualizamos la sesión en memoria para que no haya desajustes
+          const sessionActualizada = {
+            ...session,
+            nombre: nombreReal,
+            email: emailReal,
+            rol: rolReal,
+            indicativo_pais: indicativoReal,
+            telefono: telReal
+          };
+          
+          setUserAuth(sessionActualizada);
+          localStorage.setItem('atom_user_session', JSON.stringify(sessionActualizada));
         }
       }
     } catch (err) {
-      console.error('Error al cargar perfil:', err);
+      console.error('Error al sincronizar perfil con Firestore:', err);
     }
   };
 
@@ -117,8 +110,7 @@ export default function PerfilPage() {
 
     setLoading(true);
     try {
-      // Extraer únicamente los dígitos limpios sin prefijo
-      const numLimpio = extraerNumeroLocal(telefono, indicativoPais);
+      const numClean = telefono.trim().replace(/\D/g, '');
 
       // 1. Actualizar en la colección de usuarios
       if (userAuth?.id_usuario) {
@@ -127,7 +119,7 @@ export default function PerfilPage() {
           userRef,
           {
             nombre: nombre.trim(),
-            telefono: numLimpio,
+            telefono: numClean,
             indicativo_pais: indicativoPais,
             fecha_actualizacion: new Date().toISOString()
           },
@@ -142,7 +134,7 @@ export default function PerfilPage() {
           ctaRef,
           {
             nombre_empresa: empresa.trim(),
-            telefono_contacto: numLimpio,
+            telefono_contacto: numClean,
             indicativo_pais: indicativoPais,
             fecha_actualizacion: new Date().toISOString()
           },
@@ -150,22 +142,19 @@ export default function PerfilPage() {
         );
       }
 
-      // 3. Actualizar la sesión activa en localStorage
+      // 3. Actualizar la sesión local en localStorage
       const updatedSession = {
         ...userAuth,
         nombre: nombre.trim(),
         empresa: empresa.trim(),
-        telefono: numLimpio,
+        telefono: numClean,
         indicativo_pais: indicativoPais
       };
 
       setUserAuth(updatedSession);
       localStorage.setItem('atom_user_session', JSON.stringify(updatedSession));
 
-      // Actualizar el estado local con el número limpio
-      setTelefono(numLimpio);
-
-      alert('¡Perfil y teléfono de contacto corregidos y actualizados con éxito!');
+      alert('¡Perfil actualizado correctamente!');
     } catch (err: any) {
       console.error(err);
       alert('Error al guardar perfil: ' + err.message);
@@ -295,7 +284,7 @@ export default function PerfilPage() {
               />
             </div>
 
-            {/* TELÉFONO CON SELECTOR DE PAÍS E INPUT LIMPIO */}
+            {/* TELÉFONO DE CONTACTO ACTUALIZADO CON BANDERAS */}
             <div>
               <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-1.5">
                 Teléfono de Contacto
