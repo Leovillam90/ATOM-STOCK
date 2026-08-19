@@ -71,9 +71,7 @@ export default function ProductosPage() {
     }
   }, []);
 
-  // ==========================================
-  // ESCUCHAR FIRESTORE (⚠️ Deuda Técnica de Escalabilidad en Ventas)
-  // ==========================================
+  // ESCUCHAR FIRESTORE
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
@@ -83,7 +81,6 @@ export default function ProductosPage() {
     const qSuc = query(collection(db, 'sucursales'), where('id_cuenta', '==', userAuth.id_cuenta));
     const unsubSuc = onSnapshot(qSuc, (snap) => setSucursales(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))), (err) => console.error(err));
 
-    // ⚠️ ALERTA: Traer todas las ventas de la historia para calcular la "rotación" colapsará con miles de datos.
     const qVent = query(collection(db, 'ventas'), where('id_cuenta', '==', userAuth.id_cuenta));
     const unsubVent = onSnapshot(qVent, (snap) => setVentas(snap.docs.map(d => d.data())), (err) => console.error(err));
 
@@ -95,15 +92,25 @@ export default function ProductosPage() {
   }, [userAuth]);
 
   // ==========================================
-  // 🧠 RENDIMIENTO: PRE-CÁLCULO DE ÚLTIMA VENTA
+  // 🧠 RENDIMIENTO: LÓGICA DE FILTROS INTELIGENTES Y MÉTRICAS
   // ==========================================
-  // Evitamos recalcular los días inactivos por cada letra que se escribe en el buscador
+
+  // 1. Auxiliar de Stock Total por Sede
+  const obtenerStockTotalProducto = (p: any, idBod?: string) => {
+    const stMap = p.stock || {};
+    if (idBod && idBod !== 'TODAS') return Number(stMap[idBod] || 0);
+    return Object.values(stMap).reduce((acc: number, val: any) => acc + (Number(val) || 0), 0);
+  };
+
+  // 2. Memoizamos los días sin venta para no recalcularlos con cada letra
   const diasSinVentaPorSku = useMemo(() => {
     const map: { [sku: string]: number } = {};
     const hoyMs = new Date().getTime();
 
-    // 1. Encontrar la fecha máxima por SKU
     ventas.forEach(v => {
+      // Ignorar ventas anuladas para no reiniciar el contador de días inactivos
+      if (String(v.estado || '').toUpperCase() === 'ANULADA') return;
+
       const ms = v.fecha_cobro || v.fecha ? new Date(v.fecha_cobro || v.fecha).getTime() : 0;
       if (ms === 0) return;
 
@@ -118,7 +125,6 @@ export default function ProductosPage() {
       }
     });
 
-    // 2. Convertir a días de diferencia
     const resultado: { [sku: string]: number } = {};
     productos.forEach(p => {
       const maxMs = map[p.sku];
@@ -128,16 +134,80 @@ export default function ProductosPage() {
     return resultado;
   }, [ventas, productos]);
 
-  const obtenerStockTotalProducto = (p: any, idBod?: string) => {
-    const stMap = p.stock || {};
-    if (idBod && idBod !== 'TODAS') return Number(stMap[idBod] || 0);
-    return Object.values(stMap).reduce((acc: number, val: any) => acc + (Number(val) || 0), 0);
-  };
+  // 3. Tarjetas KPI Superiores (Estables, solo reaccionan a la Bodega, ignoran la caja de búsqueda)
+  const kpis = useMemo(() => {
+    let cBajo = 0;
+    let cIna120 = 0;
+    let vTotal = 0;
 
+    productos.forEach(p => {
+      const stockTotal = obtenerStockTotalProducto(p, bodegaFiltro);
+      const diasSinMov = diasSinVentaPorSku[p.sku] ?? 999;
+
+      if (stockTotal <= 5) cBajo++;
+      // Corrección lógica: Solo cuenta como estancado si REALMENTE tiene stock
+      if (stockTotal > 0 && diasSinMov >= 120) cIna120++; 
+      vTotal += stockTotal * (p.plocal || p.precio || 0);
+    });
+
+    return {
+      totalBajoStockCount: cBajo,
+      totalInactivos120Count: cIna120,
+      valorTotalInventario: vTotal
+    };
+  }, [productos, bodegaFiltro, diasSinVentaPorSku]);
+
+  // 4. Filtros de Tabla y Píldoras Dinámicas (Reaccionan a Búsqueda y Bodega al mismo tiempo)
+  const { productosFiltrados, countsFiltros } = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+
+    let cTodos = 0, cBajo = 0, cInter = 0, cIna60 = 0, cIna90 = 0, cIna120 = 0;
+
+    const filtrados = productos.filter(p => {
+      const matchSearch = String(p.nombre || '').toLowerCase().includes(q) || 
+                          String(p.sku || '').toLowerCase().includes(q) || 
+                          String(p.categoria || '').toLowerCase().includes(q);
+      
+      if (!matchSearch) return false;
+
+      const stockTotal = obtenerStockTotalProducto(p, bodegaFiltro);
+      const diasSinMov = diasSinVentaPorSku[p.sku] ?? 999;
+
+      // Alimentamos los contadores dinámicos de los botones
+      cTodos++;
+      if (stockTotal <= 5) cBajo++;
+      if (stockTotal > 5 && stockTotal <= 20) cInter++;
+      
+      // Corrección lógica: Los productos sin movimiento deben tener stock > 0
+      if (stockTotal > 0) {
+        if (diasSinMov >= 60) cIna60++;
+        if (diasSinMov >= 90) cIna90++;
+        if (diasSinMov >= 120) cIna120++;
+      }
+
+      // Aplicamos el filtro seleccionado a la tabla
+      if (filtroStockRotacion === 'BAJO_STOCK') return stockTotal <= 5;
+      if (filtroStockRotacion === 'INTERMEDIO') return stockTotal > 5 && stockTotal <= 20;
+      if (filtroStockRotacion === 'INACTIVO_60') return diasSinMov >= 60 && stockTotal > 0;
+      if (filtroStockRotacion === 'INACTIVO_90') return diasSinMov >= 90 && stockTotal > 0;
+      if (filtroStockRotacion === 'INACTIVO_120') return diasSinMov >= 120 && stockTotal > 0;
+
+      return true;
+    });
+
+    return {
+      productosFiltrados: filtrados,
+      countsFiltros: { todos: cTodos, bajo: cBajo, inter: cInter, ina60: cIna60, ina90: cIna90, ina120: cIna120 }
+    };
+  }, [productos, searchQuery, bodegaFiltro, filtroStockRotacion, diasSinVentaPorSku]);
+
+
+  // ==========================================
+  // LÓGICA DE FORMULARIOS Y MODALES
+  // ==========================================
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (file.size > 2 * 1024 * 1024) return alert('La imagen no debe superar los 2MB de tamaño.');
 
     const reader = new FileReader();
@@ -229,7 +299,7 @@ export default function ProductosPage() {
   };
 
   // ==========================================
-  // CREACIÓN/EDICIÓN MANUAL
+  // CREACIÓN/EDICIÓN MANUAL Y ELIMINACIÓN
   // ==========================================
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,6 +397,9 @@ export default function ProductosPage() {
     }
   };
 
+  // ==========================================
+  // CARGA MASIVA Y EXPORTACIÓN
+  // ==========================================
   const handleDescargarPlantillaProductos = () => {
     const bom = '\uFEFF';
     const csvContent = 
@@ -346,9 +419,6 @@ export default function ProductosPage() {
     document.body.removeChild(link);
   };
 
-  // ==========================================
-  // 🛡️ CARGA MASIVA (CON TRANSACCIONES BATCH)
-  // ==========================================
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV.');
@@ -398,7 +468,6 @@ export default function ProductosPage() {
         let nuevosCreados = 0;
         let actualizados = 0;
 
-        // MANEJO BATCH (Máximo 500 por lote en Firestore)
         const batchArray: any[] = [writeBatch(db)];
         let operacionCount = 0;
         let batchIndex = 0;
@@ -438,7 +507,6 @@ export default function ProductosPage() {
             const { base, iva } = calcularBaseEIVA(precioFisica, tarifaIvaNum, aplicaIvaBool);
             const docRef = doc(db, 'productos', skuClean);
             
-            // Validar si existe (Lo hacemos leyendo el state local de `productos` para ahorrar lecturas)
             const prodExistente = productos.find(p => p.sku === skuClean);
 
             const baseObj = {
@@ -494,11 +562,9 @@ export default function ProductosPage() {
               };
             }
 
-            // Agrega al batch
             batchArray[batchIndex].set(docRef, finalObj, { merge: true });
             operacionCount++;
 
-            // Firestore permite máx 500 escrituras por batch
             if (operacionCount === 490) {
               batchArray.push(writeBatch(db));
               batchIndex++;
@@ -507,12 +573,9 @@ export default function ProductosPage() {
           }
         }
 
-        // Ejecutar todos los batches
-        for (const batch of batchArray) {
-          await batch.commit();
-        }
+        for (const batch of batchArray) await batch.commit();
 
-        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Nuevos Registrados: ${nuevosCreados}\n🔄 Actualizados: ${actualizados}`);
+        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Nuevos Registrados: ${nuevosCreados}\n🔄 Actualizados a última versión: ${actualizados}`);
         setFileMasivo(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         setShowModalMasivo(false);
@@ -525,39 +588,6 @@ export default function ProductosPage() {
     };
     reader.readAsText(fileMasivo);
   };
-
-  // ==========================================
-  // 🧠 RENDIMIENTO: FILTRADO OPTIMIZADO
-  // ==========================================
-  const { productosFiltrados, totalBajoStockCount, totalInactivos120Count, valorTotalInventario } = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    
-    const filtrados = productos.filter(p => {
-      const matchSearch = String(p.nombre || '').toLowerCase().includes(q) || 
-                          String(p.sku || '').toLowerCase().includes(q) || 
-                          String(p.categoria || '').toLowerCase().includes(q);
-      if (!matchSearch) return false;
-
-      const stockTotal = obtenerStockTotalProducto(p, bodegaFiltro);
-      const diasSinMov = diasSinVentaPorSku[p.sku] ?? 999;
-
-      if (filtroStockRotacion === 'BAJO_STOCK') return stockTotal <= 5;
-      if (filtroStockRotacion === 'INTERMEDIO') return stockTotal > 5 && stockTotal <= 20;
-      if (filtroStockRotacion === 'INACTIVO_60') return diasSinMov >= 60;
-      if (filtroStockRotacion === 'INACTIVO_90') return diasSinMov >= 90;
-      if (filtroStockRotacion === 'INACTIVO_120') return diasSinMov >= 120;
-
-      return true;
-    });
-
-    return {
-      productosFiltrados: filtrados,
-      totalBajoStockCount: productos.filter(p => obtenerStockTotalProducto(p) <= 5).length,
-      totalInactivos120Count: productos.filter(p => (diasSinVentaPorSku[p.sku] ?? 999) >= 120).length,
-      valorTotalInventario: productos.reduce((acc, p) => acc + (obtenerStockTotalProducto(p) * (p.plocal || p.precio || 0)), 0)
-    };
-  }, [productos, searchQuery, bodegaFiltro, filtroStockRotacion, diasSinVentaPorSku]);
-
 
   const sedesFormulario = obtenerSedesAutorizadasUsuario();
   const precioReferenciaForm = Number(plocal) || Number(pecom) || Number(pmayor) || 0;
@@ -609,7 +639,7 @@ export default function ProductosPage() {
         </div>
       </div>
 
-      {/* METRICAS SUPERIORES */}
+      {/* METRICAS SUPERIORES (KPIs ESTABLES) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3">
           <div className="flex justify-between items-start">
@@ -623,7 +653,7 @@ export default function ProductosPage() {
 
           <div>
             <div className="text-3xl font-black text-white font-satoshi-black leading-tight tracking-tight">
-              {formatoCOP(valorTotalInventario)}
+              {formatoCOP(kpis.valorTotalInventario)}
             </div>
           </div>
 
@@ -633,16 +663,16 @@ export default function ProductosPage() {
         </div>
 
         <div className={`bg-[#253443] border rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3 transition-colors ${
-          totalBajoStockCount > 0 ? 'border-amber-500/50' : 'border-slate-700/50'
+          kpis.totalBajoStockCount > 0 ? 'border-amber-500/50' : 'border-slate-700/50'
         }`}>
           <div className="flex justify-between items-start">
             <span className={`text-[11px] font-satoshi-black uppercase tracking-wider ${
-              totalBajoStockCount > 0 ? 'text-amber-400' : 'text-[#A0AEC0]'
+              kpis.totalBajoStockCount > 0 ? 'text-amber-400' : 'text-[#A0AEC0]'
             }`}>
               REQUIEREN REPOSICIÓN
             </span>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              totalBajoStockCount > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-[#1D2935] text-slate-500'
+              kpis.totalBajoStockCount > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-[#1D2935] text-slate-500'
             }`}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -652,28 +682,28 @@ export default function ProductosPage() {
 
           <div>
             <div className={`text-4xl font-black font-satoshi-black leading-tight ${
-              totalBajoStockCount > 0 ? 'text-amber-300' : 'text-slate-300'
+              kpis.totalBajoStockCount > 0 ? 'text-amber-300' : 'text-slate-300'
             }`}>
-              {totalBajoStockCount} <span className="text-sm font-satoshi-regular text-[#A0AEC0]">SKUs</span>
+              {kpis.totalBajoStockCount} <span className="text-sm font-satoshi-regular text-[#A0AEC0]">SKUs</span>
             </div>
           </div>
 
           <p className="text-xs text-[#A0AEC0] font-satoshi-regular truncate">
-            Productos con 5 o menos unidades disponibles
+            Productos con 5 o menos unidades
           </p>
         </div>
 
         <div className={`bg-[#253443] border rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3 transition-colors ${
-          totalInactivos120Count > 0 ? 'border-red-500/50' : 'border-slate-700/50'
+          kpis.totalInactivos120Count > 0 ? 'border-red-500/50' : 'border-slate-700/50'
         }`}>
           <div className="flex justify-between items-start">
             <span className={`text-[11px] font-satoshi-black uppercase tracking-wider ${
-              totalInactivos120Count > 0 ? 'text-red-400' : 'text-[#A0AEC0]'
+              kpis.totalInactivos120Count > 0 ? 'text-red-400' : 'text-[#A0AEC0]'
             }`}>
               ESTANCADOS (120+ DÍAS)
             </span>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              totalInactivos120Count > 0 ? 'bg-red-500/10 text-red-400' : 'bg-[#1D2935] text-slate-500'
+              kpis.totalInactivos120Count > 0 ? 'bg-red-500/10 text-red-400' : 'bg-[#1D2935] text-slate-500'
             }`}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -683,14 +713,14 @@ export default function ProductosPage() {
 
           <div>
             <div className={`text-4xl font-black font-satoshi-black leading-tight ${
-              totalInactivos120Count > 0 ? 'text-red-400' : 'text-slate-300'
+              kpis.totalInactivos120Count > 0 ? 'text-red-400' : 'text-slate-300'
             }`}>
-              {totalInactivos120Count} <span className="text-sm font-satoshi-regular text-[#A0AEC0]">SKUs</span>
+              {kpis.totalInactivos120Count} <span className="text-sm font-satoshi-regular text-[#A0AEC0]">SKUs</span>
             </div>
           </div>
 
           <p className="text-xs text-[#A0AEC0] font-satoshi-regular truncate">
-            Sin movimiento registrado hace más de 4 meses
+            Tienen stock pero 0 ventas en 4 meses
           </p>
         </div>
       </div>
@@ -773,7 +803,10 @@ export default function ProductosPage() {
                 : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
             }`}
           >
-            Todos ({productos.length})
+            <span className="flex items-center gap-1.5">
+              <span>Todos</span>
+              <span className="bg-black/20 px-1.5 py-0.5 rounded-md text-[10px]">{countsFiltros.todos}</span>
+            </span>
           </button>
 
           <button
@@ -784,7 +817,10 @@ export default function ProductosPage() {
                 : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
             }`}
           >
-            Bajo Stock (&lt;= 5)
+            <span className="flex items-center gap-1.5">
+              <span>Bajo Stock (≤ 5)</span>
+              <span className="bg-black/20 px-1.5 py-0.5 rounded-md text-[10px]">{countsFiltros.bajo}</span>
+            </span>
           </button>
 
           <button
@@ -795,7 +831,10 @@ export default function ProductosPage() {
                 : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
             }`}
           >
-            Stock Intermedio (6 - 20)
+            <span className="flex items-center gap-1.5">
+              <span>Stock Intermedio (6 - 20)</span>
+              <span className="bg-black/20 px-1.5 py-0.5 rounded-md text-[10px]">{countsFiltros.inter}</span>
+            </span>
           </button>
 
           <button
@@ -806,7 +845,10 @@ export default function ProductosPage() {
                 : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
             }`}
           >
-            Sin Movimiento 60+ Días
+            <span className="flex items-center gap-1.5">
+              <span>Estancado 60+ Días</span>
+              <span className="bg-black/20 px-1.5 py-0.5 rounded-md text-[10px]">{countsFiltros.ina60}</span>
+            </span>
           </button>
 
           <button
@@ -817,7 +859,10 @@ export default function ProductosPage() {
                 : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
             }`}
           >
-            Sin Movimiento 90+ Días
+            <span className="flex items-center gap-1.5">
+              <span>Estancado 90+ Días</span>
+              <span className="bg-black/20 px-1.5 py-0.5 rounded-md text-[10px]">{countsFiltros.ina90}</span>
+            </span>
           </button>
 
           <button
@@ -828,7 +873,10 @@ export default function ProductosPage() {
                 : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
             }`}
           >
-            Sin Movimiento 120+ Días
+            <span className="flex items-center gap-1.5">
+              <span>Estancado 120+ Días</span>
+              <span className="bg-black/20 px-1.5 py-0.5 rounded-md text-[10px]">{countsFiltros.ina120}</span>
+            </span>
           </button>
         </div>
       </div>
@@ -1074,7 +1122,7 @@ export default function ProductosPage() {
                 <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 space-y-3">
                   <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
                     <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                     <span>Imagen del Producto</span>
                   </label>
