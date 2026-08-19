@@ -155,7 +155,7 @@ export default function FacturasPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR Y CARGAR ARCHIVO CSV MASIVO CON CAMPOS DE FACTURACIÓN ELECTRÓNICA
+  // PROCESAR Y CARGAR ARCHIVO CSV MASIVO CON VALIDACIÓN ESTRICTA DE ENCABEZADOS Y SEGURIDAD
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!archivoCSV) return alert('Selecciona un archivo CSV para procesar.');
@@ -163,10 +163,12 @@ export default function FacturasPage() {
     setLoadingEcom(true);
     const reader = new FileReader();
 
-    reader.onload = async (evt) => {
+    reader.onload = async (evt: ProgressEvent<FileReader>) => {
       try {
-        const texto = evt.target?.result as string;
-        const lineas = texto.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const texto = (evt.target?.result || '') as string;
+        const lineas = texto.split('\n')
+          .map(l => l.trim())
+          .filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
 
         if (lineas.length <= 1) {
           alert('El archivo CSV está vacío o no contiene filas de datos.');
@@ -174,27 +176,57 @@ export default function FacturasPage() {
           return;
         }
 
+        const separador = lineas[0].includes(';') ? ';' : ',';
+        const headers = lineas[0].split(separador).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
+
+        // VALIDACIÓN ESTRICTA DE COLUMNAS CLAVE DE LA PLANTILLA DE FACTURAS
+        const columnasRequeridas = ['orden_id', 'cliente_nit', 'cliente_nombre', 'producto', 'precio_unitario'];
+        const columnasFaltantes = columnasRequeridas.filter(col => !headers.includes(col));
+
+        if (columnasFaltantes.length > 0) {
+          alert(`⛔ Formato Inválido:\n\nEl archivo cargado no coincide con la plantilla oficial de Facturación / E-Commerce.\nFaltan los encabezados obligatorios: [ ${columnasFaltantes.join(', ')} ]\n\nPor favor descarga la plantilla CSV oficial e inténtalo de nuevo.`);
+          setLoadingEcom(false);
+          return;
+        }
+
+        // Obtener índices dinámicos de las columnas
+        const idxOrdenId = headers.indexOf('orden_id');
+        const idxCanal = headers.indexOf('canal');
+        const idxTipoDoc = headers.indexOf('tipo_documento');
+        const idxNit = headers.indexOf('cliente_nit');
+        const idxCliente = headers.indexOf('cliente_nombre');
+        const idxCorreo = headers.indexOf('cliente_correo');
+        const idxTel = headers.indexOf('cliente_telefono');
+        const idxDir = headers.indexOf('cliente_direccion');
+        const idxCiu = headers.indexOf('cliente_ciudad');
+        const idxResp = headers.indexOf('responsabilidad_fiscal');
+        const idxProd = headers.indexOf('producto');
+        const idxCant = headers.indexOf('cantidad');
+        const idxPrecio = headers.indexOf('precio_unitario');
+        const idxIva = headers.indexOf('iva_porcentaje');
+        const idxMetodo = headers.indexOf('metodo_pago');
+
         let importadosCount = 0;
 
         for (let i = 1; i < lineas.length; i++) {
-          const columnas = lineas[i].split(';');
-          if (columnas.length >= 10) {
-            const ordenId = columnas[0] || `ORD-${Date.now().toString().slice(-4)}`;
-            const canal = columnas[1] || canalPlataforma;
-            const tipoDoc = columnas[2] || '13';
-            const nit = columnas[3] || '222222222222';
-            const cliente = columnas[4] || 'Consumidor Final';
-            const correo = columnas[5] || 'facturacion@ecom.com';
-            const telefono = columnas[6] || 'N/A';
-            const direccion = columnas[7] || 'Ciudad Principal';
-            const ciudad = columnas[8] || 'Cali';
-            const respFiscal = columnas[9] || 'R-99-PN';
+          const columnas = lineas[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
+          if (columnas.length >= 5 && columnas[idxCliente] && columnas[idxCliente] !== '') {
+            const ordenId = (idxOrdenId !== -1 && columnas[idxOrdenId]) ? columnas[idxOrdenId] : `ORD-${Date.now().toString().slice(-4)}`;
+            const canal = (idxCanal !== -1 && columnas[idxCanal]) ? columnas[idxCanal] : canalPlataforma;
+            const tipoDoc = (idxTipoDoc !== -1 && columnas[idxTipoDoc]) ? columnas[idxTipoDoc] : '13';
+            const nit = (idxNit !== -1 && columnas[idxNit]) ? columnas[idxNit] : '222222222222';
+            const cliente = columnas[idxCliente] || 'Consumidor Final';
+            const correo = (idxCorreo !== -1 && columnas[idxCorreo]) ? columnas[idxCorreo] : 'facturacion@ecom.com';
+            const telefono = (idxTel !== -1 && columnas[idxTel]) ? columnas[idxTel] : 'N/A';
+            const direccion = (idxDir !== -1 && columnas[idxDir]) ? columnas[idxDir] : 'Ciudad Principal';
+            const ciudad = (idxCiu !== -1 && columnas[idxCiu]) ? columnas[idxCiu] : 'Cali';
+            const respFiscal = (idxResp !== -1 && columnas[idxResp]) ? columnas[idxResp] : 'R-99-PN';
 
-            const productoNombre = columnas[10] || 'Producto E-Commerce';
-            const cantidadNum = Number(columnas[11]) || 1;
-            const precioUnitario = Number(columnas[12]) || 0;
-            const ivaPct = Number(columnas[13]) || 19;
-            const metodo = columnas[14] || 'CONTRAENTREGA';
+            const productoNombre = (idxProd !== -1 && columnas[idxProd]) ? columnas[idxProd] : 'Producto E-Commerce';
+            const cantidadNum = (idxCant !== -1 && columnas[idxCant]) ? (Number(columnas[idxCant]) || 1) : 1;
+            const precioUnitario = (idxPrecio !== -1 && columnas[idxPrecio]) ? (Number(columnas[idxPrecio]) || 0) : 0;
+            const ivaPct = (idxIva !== -1 && columnas[idxIva]) ? (Number(columnas[idxIva]) || 19) : 19;
+            const metodo = (idxMetodo !== -1 && columnas[idxMetodo]) ? columnas[idxMetodo] : 'CONTRAENTREGA';
 
             const subtotal = cantidadNum * precioUnitario;
             const ivaMonto = (subtotal * ivaPct) / 100;
@@ -372,7 +404,7 @@ export default function FacturasPage() {
           <select
             className="bg-[#1D2935] border border-slate-700 text-xs text-[#0DE8C0] font-satoshi-black rounded-xl px-3 py-2.5 focus:outline-none"
             value={mesFiltro}
-            onChange={(e) => setMesFiltro(Number(e.target.value))}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMesFiltro(Number(e.target.value))}
           >
             {mesesDelAnio.map(m => (
               <option key={m.id} value={m.id} className="bg-[#1D2935] text-white">{m.nombre}</option>
@@ -382,7 +414,7 @@ export default function FacturasPage() {
           <select
             className="bg-[#1D2935] border border-slate-700 text-xs text-white font-satoshi-black rounded-xl px-3 py-2.5 focus:outline-none"
             value={anioFiltro}
-            onChange={(e) => setAnioFiltro(Number(e.target.value))}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAnioFiltro(Number(e.target.value))}
           >
             {listaAnios.map(a => (
               <option key={a} value={a} className="bg-[#1D2935] text-white">{a}</option>
@@ -423,7 +455,7 @@ export default function FacturasPage() {
             className="bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-[#A0AEC0] w-full"
             placeholder="Buscar Orden, Cliente, NIT o Producto..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
           />
         </div>
 
@@ -434,7 +466,7 @@ export default function FacturasPage() {
             <select
               className="bg-transparent text-xs text-[#0DE8C0] font-satoshi-black focus:outline-none cursor-pointer"
               value={ordenFecha}
-              onChange={(e: any) => setOrdenFecha(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setOrdenFecha(e.target.value as any)}
             >
               <option value="NUEVAS_PRIMERO" className="bg-[#1D2935] text-white">Más Nuevas Primero</option>
               <option value="ANTIGUAS_PRIMERO" className="bg-[#1D2935] text-white">Más Antiguas Primero</option>
@@ -611,7 +643,7 @@ export default function FacturasPage() {
                 <select
                   className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2.5 text-white focus:outline-none"
                   value={canalPlataforma}
-                  onChange={(e) => setCanalPlataforma(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCanalPlataforma(e.target.value)}
                 >
                   <option value="DROPI">Dropi Colombia</option>
                   <option value="VENDELO">Véndelo App</option>
@@ -642,7 +674,7 @@ export default function FacturasPage() {
                   type="file"
                   accept=".csv"
                   required
-                  onChange={(e) => setArchivoCSV(e.target.files ? e.target.files[0] : null)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setArchivoCSV(e.target.files ? e.target.files[0] : null)}
                   className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2 text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[#0DE8C0] file:text-[#1D2935] file:font-satoshi-black file:text-xs"
                 />
               </div>
