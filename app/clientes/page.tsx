@@ -172,7 +172,7 @@ export default function ClientesPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CSV DE CLIENTES (CON SEGURIDAD ANTI-DUPLICADOS)
+  // PROCESAR CARGA MASIVA CSV DE CLIENTES CON VALIDACIÓN DE ENCABEZADOS
   const handleProcesarCargaMasivaClientes = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV.');
@@ -194,47 +194,66 @@ export default function ClientesPage() {
         }
 
         const separador = lines[0].includes(';') ? ';' : ',';
+        const headers = lines[0].split(separador).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
+
+        // COLUMNAS CLAVE OBLIGATORIAS DE CLIENTES
+        const columnasRequeridas = ['nombre', 'nit'];
+        const columnasFaltantes = columnasRequeridas.filter(col => !headers.includes(col));
+
+        if (columnasFaltantes.length > 0) {
+          alert(`⛔ Formato Inválido:\n\nEl archivo cargado no coincide con la plantilla oficial de clientes.\nFaltan los encabezados obligatorios: [ ${columnasFaltantes.join(', ')} ]\n\nPor favor descarga la plantilla CSV oficial e inténtalo de nuevo.`);
+          setLoadingMasivo(false);
+          return;
+        }
+
+        const idxNombre = headers.indexOf('nombre');
+        const idxNit = headers.indexOf('nit');
+        const idxTipo = headers.indexOf('tipo_cliente');
+        const idxTel = headers.indexOf('telefono');
+        const idxEmail = headers.indexOf('email');
+        const idxDir = headers.indexOf('direccion');
+        const idxCiu = headers.indexOf('ciudad');
+
         let creados = 0;
         let rechazadosPorNit = 0;
         let rechazadosPorTel = 0;
 
-        // Sets locales para detectar duplicados en el mismo archivo CSV que se está subiendo
         const nitsEnArchivo = new Set<string>();
         const telsEnArchivo = new Set<string>();
 
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
-          if (cols.length >= 1 && cols[0] !== '') {
-            const nomInput = cols[0];
-            const nitInput = cols[1] ? cols[1].trim() : 'CF_GENERAL';
-            const tipoInputRaw = cols[2] ? cols[2].toUpperCase().trim() : 'NATURAL';
+          if (cols.length >= 1 && cols[idxNombre] && cols[idxNombre] !== '') {
+            const nomInput = cols[idxNombre];
+            const nitInput = idxNit !== -1 && cols[idxNit] ? cols[idxNit].trim() : 'CF_GENERAL';
+            
+            const tipoInputRaw = idxTipo !== -1 && cols[idxTipo] ? cols[idxTipo].toUpperCase().trim() : 'NATURAL';
             const tipoInput = (tipoInputRaw === 'JURIDICO' || tipoInputRaw === 'EMPRESA') ? 'JURIDICO' : 'NATURAL';
-            const telInput = cols[3] || '';
-            const emailInput = cols[4] ? cols[4].toLowerCase().trim() : '';
-            const dirInput = cols[5] || 'General';
-            const ciuInput = cols[6] || 'Colombia';
+            
+            const telInput = idxTel !== -1 ? cols[idxTel] : '';
+            const emailInput = idxEmail !== -1 && cols[idxEmail] ? cols[idxEmail].toLowerCase().trim() : '';
+            const dirInput = idxDir !== -1 && cols[idxDir] ? cols[idxDir] : 'General';
+            const ciuInput = idxCiu !== -1 && cols[idxCiu] ? cols[idxCiu] : 'Colombia';
 
-            // 1. REGLA DE SEGURIDAD: VERIFICAR DUPLICIDAD DE NIT (Tanto en BD como en el propio archivo)
+            // REGLAS DE SEGURIDAD: CONTROL DE DUPLICADOS
             if (nitInput !== 'CF_GENERAL') {
               const existeNitEnBD = clientes.some(c => String(c.nit || '').trim() === nitInput);
               if (existeNitEnBD || nitsEnArchivo.has(nitInput)) {
                 rechazadosPorNit++;
-                continue; // Saltar al siguiente registro
+                continue;
               }
               nitsEnArchivo.add(nitInput);
             }
 
-            // 2. REGLA DE SEGURIDAD: VERIFICAR DUPLICIDAD DE TELÉFONO (Tanto en BD como en el propio archivo)
             if (telInput && telInput !== '') {
               const existeTelEnBD = clientes.some(c => String(c.telefono || '').trim() === telInput);
               if (existeTelEnBD || telsEnArchivo.has(telInput)) {
                 rechazadosPorTel++;
-                continue; // Saltar al siguiente registro
+                continue;
               }
               telsEnArchivo.add(telInput);
             }
 
-            // Si pasa las reglas, se procede a guardar
             const idDocFinal = `CLI_${Date.now().toString().slice(-6)}_${i}`;
 
             const cliObj = {
