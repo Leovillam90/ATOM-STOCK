@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -16,6 +16,7 @@ export default function ReportesPage() {
   const [anioFiltro, setAnioFiltro] = useState<number>(hoy.getFullYear());
 
   const [agruparPor, setAgruparPor] = useState<'SEDES' | 'VENDEDORES' | 'CANALES'>('SEDES');
+  
   // ESTADO PARA FILTRAR TOP PRODUCTOS POR SELECCIÓN
   const [seleccionFiltroTop, setSeleccionFiltroTop] = useState<string | null>(null);
 
@@ -44,24 +45,29 @@ export default function ReportesPage() {
     setSeleccionFiltroTop(null);
   }, [agruparPor, mesFiltro, anioFiltro]);
 
-  // Escuchar Firestore en Tiempo Real
+  // ==========================================================
+  // ESCUCHAR FIRESTORE (⚠️ Deuda Técnica: Falta paginación o filtro en DB)
+  // ==========================================================
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
     const qVent = query(collection(db, 'ventas'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubVent = onSnapshot(qVent, (snap) => {
-      setVentas(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    const unsubVent = onSnapshot(qVent, 
+      (snap) => setVentas(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))),
+      (err) => console.error("Error al cargar ventas:", err)
+    );
 
     const qProd = query(collection(db, 'productos'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubProd = onSnapshot(qProd, (snap) => {
-      setProductos(snap.docs.map(d => ({ ...d.data(), sku: d.id })));
-    });
+    const unsubProd = onSnapshot(qProd, 
+      (snap) => setProductos(snap.docs.map(d => ({ ...d.data(), sku: d.id }))),
+      (err) => console.error("Error al cargar productos:", err)
+    );
 
     const qSuc = query(collection(db, 'sucursales'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubSuc = onSnapshot(qSuc, (snap) => {
-      setSucursales(snap.docs.map(d => d.data()));
-    });
+    const unsubSuc = onSnapshot(qSuc, 
+      (snap) => setSucursales(snap.docs.map(d => d.data())),
+      (err) => console.error("Error al cargar sucursales:", err)
+    );
 
     return () => {
       unsubVent();
@@ -70,112 +76,120 @@ export default function ReportesPage() {
     };
   }, [userAuth]);
 
-  // 1. FILTRADO DE VENTAS POR EL PERIODO FISCAL SELECCIONADO (MES Y AÑO)
-  const ventasFiltradas = ventas.filter(v => {
-    const fechaStr = v.fecha_cobro || v.fecha;
-    if (!fechaStr) return false;
-    const fechaObj = new Date(fechaStr);
-    return fechaObj.getMonth() === mesFiltro && fechaObj.getFullYear() === anioFiltro;
-  });
+  // ==========================================================
+  // 🧠 CÁLCULOS OPTIMIZADOS CON USEMEMO (P&L y Unit Economics)
+  // ==========================================================
+  const metricasGenerales = useMemo(() => {
+    // 1. Filtrado de Ventas por Fecha
+    const ventasFiltradas = ventas.filter(v => {
+      const fechaStr = v.fecha_cobro || v.fecha;
+      if (!fechaStr) return false;
+      const fechaObj = new Date(fechaStr);
+      return fechaObj.getMonth() === mesFiltro && fechaObj.getFullYear() === anioFiltro;
+    });
 
-  // 2. CÁLCULO DE VENTAS ENTREGADAS (SOLO ESTADO 'ENTREGADO', 'PAGADA' O 'EMITIDA')
-  const ventasEntregadasFiltradas = ventasFiltradas.filter(v => {
-    const est = String(v.estado || '').toUpperCase();
-    return est === 'ENTREGADO' || est === 'PAGADA' || est === 'EMITIDA';
-  });
+    // 2. Entregadas
+    const ventasEntregadasFiltradas = ventasFiltradas.filter(v => {
+      const est = String(v.estado || '').toUpperCase();
+      return est === 'ENTREGADO' || est === 'PAGADA' || est === 'EMITIDA';
+    });
 
-  const totalVentasEntregadas = ventasEntregadasFiltradas.reduce((acc, v) => acc + (Number(v.total) || 0), 0);
-  const totalDescuentosOtorgados = ventasEntregadasFiltradas.reduce((acc, v) => acc + (Number(v.descuento_monto) || 0), 0);
-  const totalVentasBrutas = totalVentasEntregadas + totalDescuentosOtorgados;
+    const totalVentasEntregadas = ventasEntregadasFiltradas.reduce((acc, v) => acc + (Number(v.total) || 0), 0);
+    const totalDescuentosOtorgados = ventasEntregadasFiltradas.reduce((acc, v) => acc + (Number(v.descuento_monto) || 0), 0);
+    const totalVentasBrutas = totalVentasEntregadas + totalDescuentosOtorgados;
 
-  let costoImportacionTotal = 0;
-  let costoFulfilmentTotal = 0;
-  let totalUnidadesVendidas = 0;
-  let totalIvaMontoAcumulado = 0;
+    let costoImportacionTotal = 0;
+    let costoFulfilmentTotal = 0;
+    let totalUnidadesVendidas = 0;
+    let totalIvaMontoAcumulado = 0;
 
-  // CÁLCULO DE UNIT ECONOMICS, IMPUESTOS Y FULFILLMENT E-COMMERCE (1 FULFILLMENT POR ORDEN)
-  ventasEntregadasFiltradas.forEach(v => {
-    totalIvaMontoAcumulado += Number(v.iva_monto) || 0;
+    ventasEntregadasFiltradas.forEach(v => {
+      totalIvaMontoAcumulado += Number(v.iva_monto) || 0;
 
-    // EVALUACIÓN DE CANAL E-COMMERCE
-    const origenStr = String(v.origen || v.canal_origen || v.tipo_tienda || '').toUpperCase();
-    const vendedorStr = String(v.vendedor_nombre || '').toUpperCase();
-    const tipoVentaStr = String(v.tipo_venta || '').toUpperCase();
-    const medioPagoStr = String(v.metodo_pago || v.medio_pago || '').toUpperCase();
+      const origenStr = String(v.origen || v.canal_origen || v.tipo_tienda || '').toUpperCase();
+      const vendedorStr = String(v.vendedor_nombre || '').toUpperCase();
+      const tipoVentaStr = String(v.tipo_venta || '').toUpperCase();
+      const medioPagoStr = String(v.metodo_pago || v.medio_pago || '').toUpperCase();
 
-    const esEcommerce = 
-      v.es_ecommerce === true ||
-      origenStr.includes('ECOMMERCE') || 
-      origenStr.includes('E-COMMERCE') || 
-      origenStr.includes('MASIVA') || 
-      origenStr.includes('SHOPIFY') || 
-      origenStr.includes('WOOCOMMERCE') || 
-      origenStr.includes('INTEGRACION') || 
-      vendedorStr.includes('E-COMMERCE') || 
-      vendedorStr.includes('DROPI') || 
-      vendedorStr.includes('VENDELO') || 
-      vendedorStr.includes('MASTER') ||
-      tipoVentaStr.includes('ECOMMERCE') ||
-      medioPagoStr.includes('DROPI');
+      const esEcommerce = 
+        v.es_ecommerce === true ||
+        origenStr.includes('ECOMMERCE') || origenStr.includes('E-COMMERCE') || 
+        origenStr.includes('MASIVA') || origenStr.includes('SHOPIFY') || 
+        origenStr.includes('WOOCOMMERCE') || origenStr.includes('INTEGRACION') || 
+        vendedorStr.includes('E-COMMERCE') || vendedorStr.includes('DROPI') || 
+        vendedorStr.includes('VENDELO') || vendedorStr.includes('MASTER') ||
+        tipoVentaStr.includes('ECOMMERCE') || medioPagoStr.includes('DROPI');
 
-    let maxFulfilmentOrden = 0;
+      let maxFulfilmentOrden = 0;
 
-    if (Array.isArray(v.items)) {
-      v.items.forEach((it: any) => {
-        const cant = Number(it.cantidad) || 1;
-        totalUnidadesVendidas += cant;
-        const prod = productos.find(p => p.sku === it.sku || (p.nombre && p.nombre.toLowerCase() === (it.nombre || '').toLowerCase()));
-        
-        if (prod) {
-          const cImp = Number(prod.costo_importacion) || 0;
-          const cFul = Number(prod.costo_fulfilment) || 0;
+      if (Array.isArray(v.items)) {
+        v.items.forEach((it: any) => {
+          const cant = Number(it.cantidad) || 1;
+          totalUnidadesVendidas += cant;
+          const prod = productos.find(p => p.sku === it.sku || (p.nombre && p.nombre.toLowerCase() === (it.nombre || '').toLowerCase()));
           
-          // Costo de compra/fabricación: acumulado por unidad vendida
-          costoImportacionTotal += cImp * cant;
-          
-          // Guardar el costo de fulfillment más representativo del producto de la orden
-          if (cFul > maxFulfilmentOrden) {
-            maxFulfilmentOrden = cFul;
+          if (prod) {
+            const cImp = Number(prod.costo_importacion) || 0;
+            const cFul = Number(prod.costo_fulfilment) || 0;
+            
+            costoImportacionTotal += cImp * cant;
+            if (cFul > maxFulfilmentOrden) {
+              maxFulfilmentOrden = cFul;
+            }
           }
-        }
-      });
-    }
+        });
+      }
 
-    // SI LA ORDEN ES E-COMMERCE: SE APLICA 1 SOLO VALOR DE FULFILLMENT POR ORDEN COMPLETA
-    if (esEcommerce) {
-      costoFulfilmentTotal += maxFulfilmentOrden > 0 ? maxFulfilmentOrden : 8000;
-    }
-  });
+      if (esEcommerce) {
+        costoFulfilmentTotal += maxFulfilmentOrden > 0 ? maxFulfilmentOrden : 8000;
+      }
+    });
 
-  // BASE GRAVABLE Y MÁRGENES
-  const baseGravableTotal = totalVentasEntregadas - totalIvaMontoAcumulado;
-  const costoDirectoProducto = costoImportacionTotal > 0 ? costoImportacionTotal : (totalVentasEntregadas * 0.3);
-  const utilidadBruta = baseGravableTotal - costoDirectoProducto;
-  
-  // Ganancia Neta restando Fulfillment exclusivo de E-Commerce
-  const gananciaNetaReal = utilidadBruta - costoFulfilmentTotal;
-  const porcentajeMargenNeto = totalVentasEntregadas > 0 ? Math.round((gananciaNetaReal / totalVentasEntregadas) * 100) : 0;
-  
-  // Ticket Promedio (AOV)
-  const ticketPromedio = ventasEntregadasFiltradas.length > 0 
-    ? Math.round(totalVentasEntregadas / ventasEntregadasFiltradas.length) 
-    : 0;
+    const baseGravableTotal = totalVentasEntregadas - totalIvaMontoAcumulado;
+    const costoDirectoProducto = costoImportacionTotal > 0 ? costoImportacionTotal : (totalVentasEntregadas * 0.3);
+    const utilidadBruta = baseGravableTotal - costoDirectoProducto;
+    
+    const gananciaNetaReal = utilidadBruta - costoFulfilmentTotal;
+    const porcentajeMargenNeto = totalVentasEntregadas > 0 ? Math.round((gananciaNetaReal / totalVentasEntregadas) * 100) : 0;
+    
+    const ticketPromedio = ventasEntregadasFiltradas.length > 0 
+      ? Math.round(totalVentasEntregadas / ventasEntregadasFiltradas.length) 
+      : 0;
 
-  // Contador de Devoluciones del Periodo y Pérdida Estimada
-  const ordenesDevolucion = ventasFiltradas.filter(v => {
-    const est = String(v.estado || '').toUpperCase();
-    return est.includes('DEVOLUCION') || est.includes('DEVOLUCIÓN') || est.includes('ANULADA');
-  });
-  const totalDevoluciones = ordenesDevolucion.length;
-  const valorPerdidoDevoluciones = ordenesDevolucion.reduce((acc, v) => acc + (Number(v.total) || 0), 0);
+    const ordenesDevolucion = ventasFiltradas.filter(v => {
+      const est = String(v.estado || '').toUpperCase();
+      return est.includes('DEVOLUCION') || est.includes('DEVOLUCIÓN') || est.includes('ANULADA');
+    });
 
-  // Valoración de Inventario en Bodegas (Balance)
-  const capitalInmovilizadoStock = productos.reduce((acc, p) => {
-    const stMap = p.stock || {};
-    const cantStock = Object.values(stMap).reduce((a: number, val: any) => a + (Number(val) || 0), 0);
-    const costoUnit = (Number(p.costo_importacion) || 0) + (Number(p.costo_fulfilment) || 0);
-    return acc + (cantStock * (costoUnit || (Number(p.precio) * 0.4)));
-  }, 0);
+    return {
+      ventasEntregadasFiltradas,
+      totalVentasEntregadas,
+      totalDescuentosOtorgados,
+      totalVentasBrutas,
+      totalIvaMontoAcumulado,
+      baseGravableTotal,
+      costoDirectoProducto,
+      costoFulfilmentTotal,
+      gananciaNetaReal,
+      porcentajeMargenNeto,
+      ticketPromedio,
+      totalUnidadesVendidas,
+      totalDevoluciones: ordenesDevolucion.length,
+      valorPerdidoDevoluciones: ordenesDevolucion.reduce((acc, v) => acc + (Number(v.total) || 0), 0)
+    };
+  }, [ventas, productos, mesFiltro, anioFiltro]);
+
+  // ==========================================================
+  // 🧠 CÁLCULO OPTIMIZADO: BALANCE DE INVENTARIO
+  // ==========================================================
+  const capitalInmovilizadoStock = useMemo(() => {
+    return productos.reduce((acc, p) => {
+      const stMap = p.stock || {};
+      const cantStock = Object.values(stMap).reduce((a: number, val: any) => a + (Number(val) || 0), 0);
+      const costoUnit = (Number(p.costo_importacion) || 0) + (Number(p.costo_fulfilment) || 0);
+      return acc + (cantStock * (costoUnit || (Number(p.precio) * 0.4)));
+    }, 0);
+  }, [productos]);
 
   // Helper para clasificar canal
   const obtenerCanalVenta = (v: any) => {
@@ -185,14 +199,10 @@ export default function ReportesPage() {
 
     if (
       v.es_ecommerce === true ||
-      origenStr.includes('ECOMMERCE') || 
-      origenStr.includes('E-COMMERCE') || 
-      origenStr.includes('MASIVA') || 
-      origenStr.includes('SHOPIFY') || 
-      vendedorStr.includes('E-COMMERCE') || 
-      vendedorStr.includes('DROPI') || 
-      vendedorStr.includes('VENDELO') || 
-      vendedorStr.includes('MASTER')
+      origenStr.includes('ECOMMERCE') || origenStr.includes('E-COMMERCE') || 
+      origenStr.includes('MASIVA') || origenStr.includes('SHOPIFY') || 
+      vendedorStr.includes('E-COMMERCE') || vendedorStr.includes('DROPI') || 
+      vendedorStr.includes('VENDELO') || vendedorStr.includes('MASTER')
     ) {
       return 'E-Commerce';
     } else if (origenStr.includes('BODEGA') || bodegaStr.includes('BODEGA') || bodegaStr.includes('ALMACEN') || bodegaStr.includes('DESPACHO')) {
@@ -202,11 +212,13 @@ export default function ReportesPage() {
     }
   };
 
-  // 3. AGRUPACIÓN DINÁMICA DE VENTAS CON CONTEO DE PRODUCTOS / UNIDADES
-  const obtenerAgrupacion = () => {
+  // ==========================================================
+  // 🧠 CÁLCULO OPTIMIZADO: AGRUPACIONES Y TOP
+  // ==========================================================
+  const agrupacionData = useMemo(() => {
     const mapa: { [key: string]: { monto: number; unidades: number; ordenes: number } } = {};
 
-    ventasEntregadasFiltradas.forEach(v => {
+    metricasGenerales.ventasEntregadasFiltradas.forEach(v => {
       let clave = 'Sede Principal';
 
       if (agruparPor === 'SEDES') {
@@ -236,16 +248,14 @@ export default function ReportesPage() {
       monto: data.monto,
       unidades: data.unidades,
       ordenes: data.ordenes,
-      porcentaje: totalVentasEntregadas > 0 ? Math.round((data.monto / totalVentasEntregadas) * 100) : 0
+      porcentaje: metricasGenerales.totalVentasEntregadas > 0 ? Math.round((data.monto / metricasGenerales.totalVentasEntregadas) * 100) : 0
     })).sort((a, b) => b.monto - a.monto);
-  };
+  }, [metricasGenerales.ventasEntregadasFiltradas, agruparPor]);
 
-  // 4. RANKING TOP PRODUCTOS REACCIONANTE A LA SELECCIÓN
-  const obtenerTopProductos = () => {
+  const topProductos = useMemo(() => {
     const mapaProd: { [key: string]: { cantidad: number; totalMonto: number; nombre: string } } = {};
 
-    // Filtrar las ventas si hay un filtro de agrupación seleccionado
-    const ventasParaTop = ventasEntregadasFiltradas.filter(v => {
+    const ventasParaTop = metricasGenerales.ventasEntregadasFiltradas.filter(v => {
       if (!seleccionFiltroTop) return true;
 
       if (agruparPor === 'SEDES') {
@@ -286,10 +296,8 @@ export default function ReportesPage() {
       .map(([sku, data]) => ({ sku, ...data }))
       .sort((a, b) => b.cantidad - a.cantidad)
       .slice(0, 5);
-  };
+  }, [metricasGenerales.ventasEntregadasFiltradas, agrupacionData, seleccionFiltroTop]);
 
-  const agrupacionData = obtenerAgrupacion();
-  const topProductos = obtenerTopProductos();
 
   return (
     <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">
@@ -377,7 +385,7 @@ export default function ReportesPage() {
 
           <div className="my-1">
             <div className="text-4xl md:text-5xl font-black text-white font-satoshi-black tracking-tight">
-              {formatoCOP(totalVentasEntregadas)}
+              {formatoCOP(metricasGenerales.totalVentasEntregadas)}
             </div>
           </div>
 
@@ -393,13 +401,13 @@ export default function ReportesPage() {
               UTILIDAD NETA REAL
             </span>
             <span className="bg-[#C81FDA] text-white text-[10px] font-satoshi-black px-2 py-0.5 rounded-full font-bold">
-              {porcentajeMargenNeto}% Neto
+              {metricasGenerales.porcentajeMargenNeto}% Neto
             </span>
           </div>
 
           <div className="my-1">
             <div className="text-3xl font-black text-[#C81FDA] font-satoshi-black tracking-tight">
-              {formatoCOP(gananciaNetaReal)}
+              {formatoCOP(metricasGenerales.gananciaNetaReal)}
             </div>
           </div>
 
@@ -413,17 +421,17 @@ export default function ReportesPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-satoshi-regular text-[#A0AEC0]">Ticket Promedio (AOV):</span>
-              <span className="text-xs font-black text-[#0DE8C0] font-satoshi-black">{formatoCOP(ticketPromedio)}</span>
+              <span className="text-xs font-black text-[#0DE8C0] font-satoshi-black">{formatoCOP(metricasGenerales.ticketPromedio)}</span>
             </div>
 
             <div className="flex items-center justify-between border-t border-slate-700/60 pt-1.5">
               <span className="text-xs font-satoshi-regular text-[#A0AEC0]">Unidades Entregadas:</span>
-              <span className="text-xs font-black text-white font-satoshi-black">{totalUnidadesVendidas} unds</span>
+              <span className="text-xs font-black text-white font-satoshi-black">{metricasGenerales.totalUnidadesVendidas} unds</span>
             </div>
 
             <div className="flex items-center justify-between border-t border-slate-700/60 pt-1.5">
               <span className="text-xs font-satoshi-regular text-[#A0AEC0]">Órdenes Entregadas:</span>
-              <span className="text-xs font-black text-white font-satoshi-black">{ventasEntregadasFiltradas.length} ops</span>
+              <span className="text-xs font-black text-white font-satoshi-black">{metricasGenerales.ventasEntregadasFiltradas.length} ops</span>
             </div>
           </div>
 
@@ -434,7 +442,7 @@ export default function ReportesPage() {
               </svg>
               <span>Devoluciones:</span>
             </div>
-            <span className="font-satoshi-black text-amber-300">{totalDevoluciones} ops ({formatoCOP(valorPerdidoDevoluciones)})</span>
+            <span className="font-satoshi-black text-amber-300">{metricasGenerales.totalDevoluciones} ops ({formatoCOP(metricasGenerales.valorPerdidoDevoluciones)})</span>
           </div>
         </div>
 
@@ -466,34 +474,34 @@ export default function ReportesPage() {
             <div className="bg-[#1D2935] p-3.5 rounded-xl border border-slate-700/80 space-y-2">
               <div className="flex justify-between items-center text-slate-300">
                 <span>Ventas Brutas (+ Descuentos):</span>
-                <span className="font-satoshi-black text-white">{formatoCOP(totalVentasBrutas)}</span>
+                <span className="font-satoshi-black text-white">{formatoCOP(metricasGenerales.totalVentasBrutas)}</span>
               </div>
               <div className="flex justify-between items-center text-amber-400">
                 <span>(-) Descuentos Otorgados:</span>
-                <span>-{formatoCOP(totalDescuentosOtorgados)}</span>
+                <span>-{formatoCOP(metricasGenerales.totalDescuentosOtorgados)}</span>
               </div>
               <div className="flex justify-between items-center text-red-400">
                 <span>(-) Impuesto IVA Discriminado:</span>
-                <span>-{formatoCOP(totalIvaMontoAcumulado)}</span>
+                <span>-{formatoCOP(metricasGenerales.totalIvaMontoAcumulado)}</span>
               </div>
               <div className="flex justify-between items-center font-satoshi-black text-[#0DE8C0] pt-2 border-t border-slate-700">
                 <span>(=) Ingreso Neto Real (Base Gravable):</span>
-                <span>{formatoCOP(baseGravableTotal)}</span>
+                <span>{formatoCOP(metricasGenerales.baseGravableTotal)}</span>
               </div>
             </div>
 
             <div className="bg-[#1D2935] p-3.5 rounded-xl border border-slate-700/80 space-y-2">
               <div className="flex justify-between items-center text-red-300">
                 <span>(-) Costo de Producto (COGS):</span>
-                <span>-{formatoCOP(costoDirectoProducto)}</span>
+                <span>-{formatoCOP(metricasGenerales.costoDirectoProducto)}</span>
               </div>
               <div className="flex justify-between items-center text-red-300">
                 <span>(-) Fulfillment (Solo E-Commerce):</span>
-                <span>-{formatoCOP(costoFulfilmentTotal)}</span>
+                <span>-{formatoCOP(metricasGenerales.costoFulfilmentTotal)}</span>
               </div>
               <div className="flex justify-between items-center font-satoshi-black text-[#C81FDA] pt-3.5 border-t border-slate-700">
                 <span>(=) GANANCIA NETA OPERATIVA:</span>
-                <span>{formatoCOP(gananciaNetaReal)}</span>
+                <span>{formatoCOP(metricasGenerales.gananciaNetaReal)}</span>
               </div>
             </div>
           </div>

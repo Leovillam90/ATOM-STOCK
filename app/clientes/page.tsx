@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function ClientesPage() {
@@ -23,7 +23,7 @@ export default function ClientesPage() {
   const [email, setEmail] = useState('');
   const [direccion, setDireccion] = useState('');
   const [ciudad, setCiudad] = useState('');
-  const [estado, setEstado] = useState<'ACTIVO' | 'INACTIVO'>('ACTIVO');
+  const [estado, setEstado] = useState<'ACTIVA' | 'INACTIVO'>('ACTIVA');
   const [loading, setLoading] = useState(false);
 
   // Modal Carga Masiva
@@ -49,9 +49,10 @@ export default function ClientesPage() {
     if (!userAuth || !userAuth.id_cuenta) return;
 
     const q = query(collection(db, 'clientes'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsub = onSnapshot(q, (snap) => {
-      setClientes(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    const unsub = onSnapshot(q, 
+      (snap) => setClientes(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))),
+      (err) => console.error("Error cargando clientes:", err)
+    );
 
     return () => unsub();
   }, [userAuth]);
@@ -93,7 +94,7 @@ export default function ClientesPage() {
     setEmail('');
     setDireccion('');
     setCiudad('');
-    setEstado('ACTIVO');
+    setEstado('ACTIVA');
     setShowModal(true);
   };
 
@@ -106,7 +107,7 @@ export default function ClientesPage() {
     setEmail(c.email || c.EMAIL || '');
     setDireccion(c.direccion || c.DIRECCION || '');
     setCiudad(c.ciudad || c.CIUDAD || '');
-    setEstado(c.estado || 'ACTIVO');
+    setEstado(c.estado || 'ACTIVA');
     setOpenMenuId(null);
     setShowModal(true);
   };
@@ -156,7 +157,6 @@ export default function ClientesPage() {
     }
   };
 
-  // DESCARGAR PLANTILLA CSV PARA CLIENTES
   const handleDescargarPlantillaClientes = () => {
     const bom = '\uFEFF';
     const csvContent = 
@@ -175,7 +175,9 @@ export default function ClientesPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CSV DE CLIENTES CON VALIDACIÓN DE ENCABEZADOS
+  // ==========================================
+  // 🛡️ CARGA MASIVA CON BATCH DE FIRESTORE
+  // ==========================================
   const handleProcesarCargaMasivaClientes = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV.');
@@ -186,9 +188,7 @@ export default function ClientesPage() {
     reader.onload = async (evt) => {
       try {
         const text = evt.target?.result as string;
-        const lines = text.split('\n')
-          .map(l => l.trim())
-          .filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
 
         if (lines.length <= 1) {
           alert('El archivo está vacío o solo contiene encabezados.');
@@ -199,12 +199,11 @@ export default function ClientesPage() {
         const separador = lines[0].includes(';') ? ';' : ',';
         const headers = lines[0].split(separador).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
 
-        // COLUMNAS CLAVE OBLIGATORIAS DE CLIENTES
         const columnasRequeridas = ['nombre', 'nit'];
         const columnasFaltantes = columnasRequeridas.filter(col => !headers.includes(col));
 
         if (columnasFaltantes.length > 0) {
-          alert(`⛔ Formato Inválido:\n\nEl archivo cargado no coincide con la plantilla oficial de clientes.\nFaltan los encabezados obligatorios: [ ${columnasFaltantes.join(', ')} ]\n\nPor favor descarga la plantilla CSV oficial e inténtalo de nuevo.`);
+          alert(`⛔ Formato Inválido:\nFaltan los encabezados obligatorios: [ ${columnasFaltantes.join(', ')} ]`);
           setLoadingMasivo(false);
           return;
         }
@@ -224,8 +223,14 @@ export default function ClientesPage() {
         const nitsEnArchivo = new Set<string>();
         const telsEnArchivo = new Set<string>();
 
+        // Agrupamiento por Lotes (Firebase Batch)
+        const batchArray: any[] = [writeBatch(db)];
+        let batchIndex = 0;
+        let opCount = 0;
+
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
+          
           if (cols.length >= 1 && cols[idxNombre] && cols[idxNombre] !== '') {
             const nomInput = cols[idxNombre];
             const nitInput = idxNit !== -1 && cols[idxNit] ? cols[idxNit].trim() : 'CF_GENERAL';
@@ -238,7 +243,7 @@ export default function ClientesPage() {
             const dirInput = idxDir !== -1 && cols[idxDir] ? cols[idxDir] : 'General';
             const ciuInput = idxCiu !== -1 && cols[idxCiu] ? cols[idxCiu] : 'Colombia';
 
-            // REGLAS DE SEGURIDAD: CONTROL DE DUPLICADOS
+            // REGLAS DE SEGURIDAD: CONTROL DE DUPLICADOS LOCALES Y REMOTOS
             if (nitInput !== 'CF_GENERAL') {
               const existeNitEnBD = clientes.some(c => String(c.nit || '').trim() === nitInput);
               if (existeNitEnBD || nitsEnArchivo.has(nitInput)) {
@@ -273,9 +278,22 @@ export default function ClientesPage() {
               fecha_actualizacion: new Date().toISOString()
             };
 
-            await setDoc(doc(db, 'clientes', idDocFinal), cliObj, { merge: true });
+            const docRef = doc(db, 'clientes', idDocFinal);
+            batchArray[batchIndex].set(docRef, cliObj, { merge: true });
+            opCount++;
             creados++;
+
+            if (opCount >= 450) {
+              batchArray.push(writeBatch(db));
+              batchIndex++;
+              opCount = 0;
+            }
           }
+        }
+
+        // EJECUTAR BATCH FINAL
+        for (const b of batchArray) {
+          await b.commit();
         }
 
         let mensajeAlerta = `¡Proceso Masivo Finalizado!\n\n✨ Clientes Creados Exitosamente: ${creados}`;
@@ -302,25 +320,30 @@ export default function ClientesPage() {
     reader.readAsText(fileMasivo);
   };
 
-  // Filtrado
-  const clientesFiltrados = clientes.filter(c => {
+  // ==========================================
+  // 🧠 RENDIMIENTO: LÓGICA MEMOIZADA (Filtros y Conteos)
+  // ==========================================
+  const { clientesFiltrados, totalEmpresas, totalPersonas } = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    const matchSearch = String(c.nombre || '').toLowerCase().includes(q) ||
-                        String(c.nit || '').toLowerCase().includes(q) ||
-                        String(c.ciudad || '').toLowerCase().includes(q) ||
-                        String(c.telefono || '').toLowerCase().includes(q);
-    
-    if (!matchSearch) return false;
 
-    if (filtroTipo === 'NATURAL') return c.tipo_cliente !== 'JURIDICO';
-    if (filtroTipo === 'JURIDICO') return c.tipo_cliente === 'JURIDICO';
+    const filtrados = clientes.filter(c => {
+      const matchSearch = String(c.nombre || '').toLowerCase().includes(q) ||
+                          String(c.nit || '').toLowerCase().includes(q) ||
+                          String(c.ciudad || '').toLowerCase().includes(q) ||
+                          String(c.telefono || '').toLowerCase().includes(q);
+      
+      if (!matchSearch) return false;
+      if (filtroTipo === 'NATURAL') return c.tipo_cliente !== 'JURIDICO';
+      if (filtroTipo === 'JURIDICO') return c.tipo_cliente === 'JURIDICO';
+      return true;
+    });
 
-    return true;
-  });
-
-  // Conteos
-  const totalEmpresas = clientes.filter(c => c.tipo_cliente === 'JURIDICO').length;
-  const totalPersonas = clientes.filter(c => c.tipo_cliente !== 'JURIDICO').length;
+    return {
+      clientesFiltrados: filtrados,
+      totalEmpresas: clientes.filter(c => c.tipo_cliente === 'JURIDICO').length,
+      totalPersonas: clientes.filter(c => c.tipo_cliente !== 'JURIDICO').length
+    };
+  }, [clientes, searchQuery, filtroTipo]);
 
   return (
     <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">

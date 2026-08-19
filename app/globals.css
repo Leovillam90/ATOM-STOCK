@@ -1,10 +1,17 @@
 @import "tailwindcss";
 
+/* 
+  Estilos Base (Fallback)
+  Nota: La mayoría de estos estilos ya están aplicados a través 
+  de las clases de Tailwind en el <body> del layout.tsx
+*/
 html,
 body {
-  background-color: #1D2935 !important;
+  background-color: #1D2935;
   color: #f8fafc;
   min-height: 100vh;
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased; /* Mejora la legibilidad de las fuentes en Mac/iOS */
+  -moz-osx-font-smoothing: grayscale;
 }

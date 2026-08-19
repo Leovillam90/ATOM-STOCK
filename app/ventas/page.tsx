@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { collection, query, where, onSnapshot, doc, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function VentasPage() {
@@ -25,7 +25,7 @@ export default function VentasPage() {
   const [montoPagaCon, setMontoPagaCon] = useState<number>(0);
   const [ivaIncluido, setIvaIncluido] = useState<boolean>(true);
 
-  // BUSCADOR INTELIGENTE DE CLIENTES (INICIA EN BLANCO SIN SELECCIÓN PREDETERMINADA)
+  // BUSCADOR INTELIGENTE DE CLIENTES
   const [clienteSearch, setClienteSearch] = useState('');
   const [clienteSelObj, setClienteSelObj] = useState<any>(null);
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
@@ -62,7 +62,7 @@ export default function VentasPage() {
     }
   }, []);
 
-  // Escuchar Firestore
+  // Escuchar Firestore (⚠️ Deuda técnica futura: Paginar ventas para escalar a +10k registros)
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
@@ -93,7 +93,7 @@ export default function VentasPage() {
 
     const unsubVent = onSnapshot(qVent, (snap) => {
       setVentas(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    }, (error) => console.error("Error ventas:", error));
 
     const qProd = query(collection(db, 'productos'), where('id_cuenta', '==', userAuth.id_cuenta));
     const unsubProd = onSnapshot(qProd, (snap) => {
@@ -217,48 +217,70 @@ export default function VentasPage() {
     setCart(prev => prev.filter(item => item.sku !== sku));
   };
 
-  // CÁLCULOS DE MONTO, DESCUENTOS E IVA
-  const subtotalBrutoCarrito = cart.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+  // =========================================================================
+  // 🧠 CÁLCULOS OPTIMIZADOS (useMemo para evitar lag al escribir en buscadores)
+  // =========================================================================
+  const { 
+    subtotalBrutoCarrito, 
+    valorDescuentoEfectivo, 
+    subtotalConDescuento, 
+    baseGravableTotal, 
+    ivaMontoTotal, 
+    totalCobroPOS, 
+    cambioDevuelto 
+  } = useMemo(() => {
+    const subtotalBruto = cart.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
 
-  let valorDescuentoEfectivo = 0;
-  if (montoDescuento && Number(montoDescuento) > 0) {
-    if (tipoDescuento === 'PORCENTAJE') {
-      valorDescuentoEfectivo = (subtotalBrutoCarrito * Math.min(Number(montoDescuento), 100)) / 100;
-    } else {
-      valorDescuentoEfectivo = Math.min(Number(montoDescuento), subtotalBrutoCarrito);
+    let valDesc = 0;
+    if (montoDescuento && Number(montoDescuento) > 0) {
+      if (tipoDescuento === 'PORCENTAJE') {
+        valDesc = (subtotalBruto * Math.min(Number(montoDescuento), 100)) / 100;
+      } else {
+        valDesc = Math.min(Number(montoDescuento), subtotalBruto);
+      }
     }
-  }
 
-  const subtotalConDescuento = subtotalBrutoCarrito - valorDescuentoEfectivo;
+    const subConDesc = subtotalBruto - valDesc;
 
-  let baseGravableTotal = 0;
-  let ivaMontoTotal = 0;
-  let totalCobroPOS = 0;
+    let baseGrav = 0;
+    let ivaMonto = 0;
+    let totalPOS = 0;
 
-  if (ivaIncluido) {
-    totalCobroPOS = subtotalConDescuento;
-    cart.forEach(item => {
-      const tarifa = item.tarifaIva || 19;
-      const fraccionItem = subtotalBrutoCarrito > 0 ? (item.precio * item.cantidad) / subtotalBrutoCarrito : 0;
-      const totalItemConDesc = subtotalConDescuento * fraccionItem;
-      const baseItem = totalItemConDesc / (1 + (tarifa / 100));
-      const ivaItem = totalItemConDesc - baseItem;
+    if (ivaIncluido) {
+      totalPOS = subConDesc;
+      cart.forEach(item => {
+        const tarifa = item.tarifaIva || 19;
+        const fraccionItem = subtotalBruto > 0 ? (item.precio * item.cantidad) / subtotalBruto : 0;
+        const totalItemConDesc = subConDesc * fraccionItem;
+        const baseItem = totalItemConDesc / (1 + (tarifa / 100));
+        const ivaItem = totalItemConDesc - baseItem;
 
-      baseGravableTotal += baseItem;
-      ivaMontoTotal += ivaItem;
-    });
-  } else {
-    baseGravableTotal = subtotalConDescuento;
-    cart.forEach(item => {
-      const tarifa = item.tarifaIva || 19;
-      const fraccionItem = subtotalBrutoCarrito > 0 ? (item.precio * item.cantidad) / subtotalBrutoCarrito : 0;
-      const totalItemConDesc = subtotalConDescuento * fraccionItem;
-      ivaMontoTotal += (totalItemConDesc * tarifa) / 100;
-    });
-    totalCobroPOS = baseGravableTotal + ivaMontoTotal;
-  }
+        baseGrav += baseItem;
+        ivaMonto += ivaItem;
+      });
+    } else {
+      baseGrav = subConDesc;
+      cart.forEach(item => {
+        const tarifa = item.tarifaIva || 19;
+        const fraccionItem = subtotalBruto > 0 ? (item.precio * item.cantidad) / subtotalBruto : 0;
+        const totalItemConDesc = subConDesc * fraccionItem;
+        ivaMonto += (totalItemConDesc * tarifa) / 100;
+      });
+      totalPOS = baseGrav + ivaMonto;
+    }
 
-  const cambioDevuelto = metodoPago === 'EFECTIVO' && montoPagaCon > totalCobroPOS ? montoPagaCon - totalCobroPOS : 0;
+    const cambio = metodoPago === 'EFECTIVO' && montoPagaCon > totalPOS ? montoPagaCon - totalPOS : 0;
+
+    return {
+      subtotalBrutoCarrito: subtotalBruto,
+      valorDescuentoEfectivo: valDesc,
+      subtotalConDescuento: subConDesc,
+      baseGravableTotal: baseGrav,
+      ivaMontoTotal: ivaMonto,
+      totalCobroPOS: totalPOS,
+      cambioDevuelto: cambio
+    };
+  }, [cart, montoDescuento, tipoDescuento, ivaIncluido, metodoPago, montoPagaCon]);
 
   // FILTRADO DINÁMICO DE CLIENTES POR BUSCADOR
   const clientesFiltradosPOS = clientes.filter(c => 
@@ -266,7 +288,9 @@ export default function VentasPage() {
     String(c.nit || c.id_cliente || '').toLowerCase().includes(clienteSearch.toLowerCase())
   );
 
-  // PROCESAR COBRO POS CON VALIDACIÓN OBLIGATORIA DE SELECCIÓN DE CLIENTE
+  // =========================================================================
+  // 🛡️ PROCESAR COBRO POS (CON WRITEBATCH PARA ATOMICIDAD Y ESCALAMIENTO)
+  // =========================================================================
   const handleCobrarVenta = async () => {
     const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
     if (cart.length === 0) return alert('El carrito está vacío. Selecciona al menos un producto.');
@@ -332,9 +356,13 @@ export default function VentasPage() {
         estado: 'PAGADA'
       };
 
-      await setDoc(doc(db, 'ventas', idFactura), ventaData, { merge: true });
+      // IMPLEMENTACIÓN BATCH: Protege contra desincronización y reduce peticiones a DB
+      const batch = writeBatch(db);
+      
+      const ventaRef = doc(db, 'ventas', idFactura);
+      batch.set(ventaRef, ventaData, { merge: true });
 
-      // Descontar Stock
+      // Descontar Stock dentro de la misma transacción
       for (const item of cart) {
         const prodRef = doc(db, 'productos', item.sku);
         const prodObj = productos.find(p => p.sku === item.sku);
@@ -343,7 +371,7 @@ export default function VentasPage() {
           const currentVal = Number(currentStockMap[sedeEfectiva] || 0);
           const newVal = Math.max(0, currentVal - item.cantidad);
           
-          await setDoc(prodRef, {
+          batch.set(prodRef, {
             stock: {
               ...currentStockMap,
               [sedeEfectiva]: newVal
@@ -351,6 +379,8 @@ export default function VentasPage() {
           }, { merge: true });
         }
       }
+
+      await batch.commit(); // Ejecuta todo al mismo tiempo
 
       setCart([]);
       setMontoPagaCon(0);
@@ -399,7 +429,9 @@ export default function VentasPage() {
     window.open(url, '_blank');
   };
 
-  // Modal Anular
+  // =========================================================================
+  // 🛡️ MODAL ANULAR (RESTABLECER INVENTARIO EN BATCH)
+  // =========================================================================
   const handleOpenAnular = (v: any) => {
     setVentaAAnular(v);
     setMotivoAnulacion('');
@@ -426,8 +458,11 @@ export default function VentasPage() {
         usuario_anulo_id: userAuth?.id_usuario || ''
       };
 
-      await setDoc(doc(db, 'ventas', docId), updateData, { merge: true });
+      const batch = writeBatch(db);
+      const ventaRef = doc(db, 'ventas', docId);
+      batch.set(ventaRef, updateData, { merge: true });
 
+      // Devolver stock en bloque
       if (Array.isArray(ventaAAnular.items)) {
         for (const item of ventaAAnular.items) {
           if (item.sku) {
@@ -439,7 +474,7 @@ export default function VentasPage() {
               const stockActual = Number(currentStockMap[idSedeDevolucion] || 0);
               const stockDevuelto = stockActual + Number(item.cantidad || 1);
 
-              await setDoc(prodRef, {
+              batch.set(prodRef, {
                 stock: {
                   ...currentStockMap,
                   [idSedeDevolucion]: stockDevuelto
@@ -449,6 +484,8 @@ export default function VentasPage() {
           }
         }
       }
+
+      await batch.commit();
 
       alert(`¡Venta N° ${ventaAAnular.id_factura} ANULADA y stock restablecido!`);
       setShowModalAnular(false);
@@ -1214,7 +1251,7 @@ export default function VentasPage() {
                 <label className="block text-xs font-satoshi-black text-white uppercase mb-2">Motivo *</label>
                 <textarea
                   rows={3}
-                  className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-3 text-xs text-white"
+                  className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#0DE8C0]"
                   placeholder="Justificación de anulación..."
                   value={motivoAnulacion}
                   onChange={(e) => setMotivoAnulacion(e.target.value)}
@@ -1223,8 +1260,8 @@ export default function VentasPage() {
               </div>
 
               <div className="flex gap-3">
-                <button type="button" onClick={() => setShowModalAnular(false)} className="flex-1 bg-[#1D2935] text-slate-300 font-satoshi-black py-3 rounded-xl text-xs uppercase">Cancelar</button>
-                <button type="submit" disabled={isAnulando} className="flex-1 bg-red-600 text-white font-satoshi-black py-3 rounded-xl text-xs uppercase">
+                <button type="button" onClick={() => setShowModalAnular(false)} className="flex-1 bg-[#1D2935] text-slate-300 font-satoshi-black py-3 rounded-xl text-xs uppercase hover:bg-slate-800">Cancelar</button>
+                <button type="submit" disabled={isAnulando} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-satoshi-black py-3 rounded-xl text-xs uppercase disabled:opacity-50">
                   {isAnulando ? 'Anulando...' : 'Confirmar Anulación'}
                 </button>
               </div>

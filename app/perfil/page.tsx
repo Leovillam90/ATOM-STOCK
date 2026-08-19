@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import '@/app/globals.css';
 
@@ -29,7 +29,7 @@ export default function PerfilPage() {
   // Formulario Perfil de Usuario
   const [nombre, setNombre] = useState('');
   const [userEmail, setUserEmail] = useState('');
-  const [prefijoPais, setPrefijoPais] = useState(''); // <-- Inicia vacío para obligar selección
+  const [prefijoPais, setPrefijoPais] = useState(''); 
   const [telefono, setTelefono] = useState('');
 
   // Módulo Seguridad Colapsable
@@ -38,7 +38,7 @@ export default function PerfilPage() {
   const [passNueva, setPassNueva] = useState('');
   const [passConfirm, setPassConfirm] = useState('');
 
-  // Formulario Datos Legales (Conectado a 'Factura_Electronica')
+  // Formulario Datos Legales (Factura_Electronica)
   const [razonSocial, setRazonSocial] = useState('');
   const [nit, setNit] = useState('');
   const [regimenFiscal, setRegimenFiscal] = useState('RESPONSABLE_IVA');
@@ -50,7 +50,7 @@ export default function PerfilPage() {
 
   const [isSaving, setIsSaving] = useState(false);
 
-  // Función limpiadora de teléfono (evita duplicar el indicativo)
+  // SANITIZACIÓN DE TELÉFONO
   const extraerNumeroLocal = (telRaw: string) => {
     if (!telRaw) return '';
     let str = String(telRaw).trim();
@@ -97,12 +97,11 @@ export default function PerfilPage() {
           const ud = uDoc.data();
           uNom = ud.nombre || uNom;
           uUser = ud.user || uUser;
-          uPrefijo = ud.indicativo_pais || uPrefijo; // Lee el indicativo real de Firestore
-          uTel = extraerNumeroLocal(ud.telefono || session.telefono || ''); // Lee y limpia el número real
+          uPrefijo = ud.indicativo_pais || uPrefijo;
+          uTel = extraerNumeroLocal(ud.telefono || session.telefono || '');
         }
       }
 
-      // Consulta a la colección 'Factura_Electronica'
       if (session.id_cuenta) {
         const feDoc = await getDoc(doc(db, 'Factura_Electronica', session.id_cuenta));
         if (feDoc.exists()) {
@@ -115,7 +114,7 @@ export default function PerfilPage() {
           dirF = fd.direccion_fiscal || '';
           eFact = fd.email_facturacion || '';
         } else {
-          // Fallback a 'cuentas'
+          // Fallback
           const cDoc = await getDoc(doc(db, 'cuentas', session.id_cuenta));
           if (cDoc.exists()) {
             const cd = cDoc.data();
@@ -177,14 +176,15 @@ export default function PerfilPage() {
     return cambioPerfil || cambioLegales;
   };
 
+  // ==========================================
+  // 🛡️ GUARDADO CON BATCH (TODO O NADA)
+  // ==========================================
   const handleGuardarCambios = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!prefijoPais) return alert("Por favor selecciona el indicativo de tu país en la pestaña Perfil.");
     if (!telefono.trim()) return alert("Por favor ingresa tu número de teléfono.");
-
     if (!hayCambios()) return;
-
     if (passNueva && passNueva !== passConfirm) {
       return alert('Las nuevas contraseñas no coinciden.');
     }
@@ -192,6 +192,8 @@ export default function PerfilPage() {
     setIsSaving(true);
     try {
       const numLimpio = extraerNumeroLocal(telefono);
+      const batch = writeBatch(db);
+      const fechaActualizacion = new Date().toISOString();
 
       // 1. Actualizar usuario
       if (userAuth?.id_usuario) {
@@ -199,15 +201,16 @@ export default function PerfilPage() {
           nombre: nombre.trim(),
           telefono: numLimpio,
           indicativo_pais: prefijoPais,
-          fecha_actualizacion: new Date().toISOString()
+          fecha_actualizacion: fechaActualizacion
         };
         if (passNueva.trim()) {
           userUpdate.pass = passNueva.trim();
         }
-        await setDoc(doc(db, 'usuarios', userAuth.id_usuario), userUpdate, { merge: true });
+        const userRef = doc(db, 'usuarios', userAuth.id_usuario);
+        batch.set(userRef, userUpdate, { merge: true });
       }
 
-      // 2. Guardar datos en la colección 'Factura_Electronica'
+      // 2. Guardar datos legales y actualizar cuenta
       if (userAuth?.id_cuenta) {
         const facturaElectronicaData = {
           id_cuenta: userAuth.id_cuenta,
@@ -220,19 +223,22 @@ export default function PerfilPage() {
           telefono_corporativo: telefonoCorp.trim(),
           direccion_fiscal: direccionFiscal.trim(),
           email_facturacion: emailFacturacion.trim(),
-          fecha_actualizacion: new Date().toISOString()
+          fecha_actualizacion: fechaActualizacion
         };
 
-        await setDoc(doc(db, 'Factura_Electronica', userAuth.id_cuenta), facturaElectronicaData, { merge: true });
+        const feRef = doc(db, 'Factura_Electronica', userAuth.id_cuenta);
+        batch.set(feRef, facturaElectronicaData, { merge: true });
         
-        // También actualizar el teléfono en la colección cuentas si es admin
         if (userAuth.rol === 'ADMIN') {
-          await setDoc(doc(db, 'cuentas', userAuth.id_cuenta), {
+          const ctaRef = doc(db, 'cuentas', userAuth.id_cuenta);
+          batch.set(ctaRef, {
             telefono_contacto: numLimpio,
             indicativo_pais: prefijoPais
           }, { merge: true });
         }
       }
+
+      await batch.commit(); // Ejecuta las 3 escrituras al mismo tiempo
 
       const sessionObj = {
         ...userAuth,
@@ -326,7 +332,7 @@ export default function PerfilPage() {
 
           {/* PESTAÑA 1: PERFIL */}
           {activeTab === 'PERFIL' && (
-            <div className="max-w-2xl mx-auto space-y-4">
+            <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in">
               
               <div className="bg-[#253443] border border-slate-700/50 rounded-xl p-4 flex items-center gap-4 shadow-lg">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#0DE8C0] to-purple-600 flex items-center justify-center text-white font-satoshi-black text-xl shadow-inner shrink-0">
@@ -369,7 +375,7 @@ export default function PerfilPage() {
                       disabled
                     />
                     <svg className="w-3.5 h-3.5 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2-2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
                 </div>
@@ -418,7 +424,7 @@ export default function PerfilPage() {
                   </button>
 
                   {showSeguridad && (
-                    <div className="mt-3 p-3 bg-[#1D2935] rounded-lg border border-slate-700/80 space-y-3">
+                    <div className="mt-3 p-3 bg-[#1D2935] rounded-lg border border-slate-700/80 space-y-3 animate-in slide-in-from-top-2">
                       <div>
                         <label className="block text-[10px] font-satoshi-black text-slate-300 uppercase mb-0.5">Contraseña Actual</label>
                         <input
@@ -458,7 +464,7 @@ export default function PerfilPage() {
 
           {/* PESTAÑA 2: DATOS LEGALES Y FISCALES */}
           {activeTab === 'LEGALES' && (
-            <div className="bg-[#253443] border border-slate-700/50 rounded-xl p-4 lg:p-5 shadow-lg space-y-4">
+            <div className="bg-[#253443] border border-slate-700/50 rounded-xl p-4 lg:p-5 shadow-lg space-y-4 animate-in fade-in">
               <div className="border-b border-slate-700/60 pb-2">
                 <h3 className="text-sm font-satoshi-black text-white uppercase tracking-wider">
                   Información Legal de Facturación
@@ -617,7 +623,7 @@ export default function PerfilPage() {
                 className="w-full md:w-auto ml-auto bg-[#C81FDA] hover:bg-[#a617b5] disabled:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-satoshi-black px-6 py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all duration-300 shadow-md flex items-center justify-center gap-1.5"
               >
                 {isSaving ? (
-                  <span>Guardando en Factura_Electronica...</span>
+                  <span>Guardando en BD...</span>
                 ) : (
                   <>
                     <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

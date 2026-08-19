@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -34,14 +34,15 @@ export default function SucursalesPage() {
     }
   }, []);
 
-  // Escuchar 'sucursales' en Firestore
+  // Escuchar 'sucursales' en Firestore (Con manejo de errores)
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
     const q = query(collection(db, 'sucursales'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsub = onSnapshot(q, (snap) => {
-      setSucursales(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    const unsub = onSnapshot(q, 
+      (snap) => setSucursales(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))),
+      (err) => console.error("Error cargando sucursales:", err)
+    );
 
     return () => unsub();
   }, [userAuth]);
@@ -133,6 +134,8 @@ export default function SucursalesPage() {
   const handleDelete = async (e: React.MouseEvent, s: any) => {
     e.stopPropagation();
     setOpenMenuId(null);
+    // ⚠️ DEUDA TÉCNICA: Un borrado físico (deleteDoc) puede dejar ventas huérfanas. 
+    // A futuro considerar cambiar el estado a 'ELIMINADA' (Soft Delete).
     if (!confirm(`¿Estás seguro de eliminar la sede ${s.nombre}? Esta acción no se puede deshacer.`)) return;
 
     try {
@@ -143,25 +146,37 @@ export default function SucursalesPage() {
     }
   };
 
-  // Filtrado
-  const sucursalesFiltradas = sucursales.filter(s => {
+  // ==========================================
+  // 🧠 RENDIMIENTO: CÁLCULOS MEMOIZADOS
+  // ==========================================
+  
+  // 1. Contadores (Solo se recalculan si cambia el tamaño del array de sucursales)
+  const { totalPos, totalBodegas } = useMemo(() => {
+    return {
+      totalPos: sucursales.filter(s => s.tipo_sucursal === 'POS').length,
+      totalBodegas: sucursales.filter(s => s.tipo_sucursal === 'BODEGA').length
+    };
+  }, [sucursales]);
+
+  // 2. Filtrado dinámico veloz
+  const sucursalesFiltradas = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    const matchSearch = String(s.nombre || '').toLowerCase().includes(q) ||
-                        String(s.ciudad || '').toLowerCase().includes(q) ||
-                        String(s.id_sucursal || '').toLowerCase().includes(q);
-    
-    if (!matchSearch) return false;
+    return sucursales.filter(s => {
+      const matchSearch = String(s.nombre || '').toLowerCase().includes(q) ||
+                          String(s.ciudad || '').toLowerCase().includes(q) ||
+                          String(s.id_sucursal || '').toLowerCase().includes(q);
+      
+      if (!matchSearch) return false;
+      if (tipoFiltro === 'POS') return s.tipo_sucursal === 'POS';
+      if (tipoFiltro === 'BODEGA') return s.tipo_sucursal === 'BODEGA';
+      return true;
+    });
+  }, [sucursales, searchQuery, tipoFiltro]);
 
-    if (tipoFiltro === 'POS') return s.tipo_sucursal === 'POS';
-    if (tipoFiltro === 'BODEGA') return s.tipo_sucursal === 'BODEGA';
 
-    return true;
-  });
-
-  // Conteos
-  const totalPos = sucursales.filter(s => s.tipo_sucursal === 'POS').length;
-  const totalBodegas = sucursales.filter(s => s.tipo_sucursal === 'BODEGA').length;
-
+  // ==========================================
+  // RENDERIZADO UI
+  // ==========================================
   return (
     <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">
       

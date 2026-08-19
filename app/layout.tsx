@@ -11,19 +11,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
 
+  // ==========================================
+  // ESTADOS GLOBALES Y SESIÓN
+  // ==========================================
   const [userAuth, setUserAuth] = useState<any>(null);
   const [loadingSession, setLoadingSession] = useState(true);
 
-  // Estados de Conteo de Colecciones para Alertas Dinámicas y Onboarding
+  // Estados de Conteo (⚠️ Deuda de escalamiento: Optimizar a getCountFromServer a futuro)
   const [numSucursales, setNumSucursales] = useState<number | null>(null);
   const [numVendedores, setNumVendedores] = useState<number | null>(null);
   const [numProductos, setNumProductos] = useState<number | null>(null);
 
-  // Popover de Usuario (Pie del Sidebar)
   const [showUserPopover, setShowUserPopover] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
-
-  // Tooltip Informativo para Conexiones E-Commerce
   const [showEcommerceTooltip, setShowEcommerceTooltip] = useState(false);
 
   // LISTA EXCLUSIVA DE PAÍSES E INDICATIVOS LATAM
@@ -41,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     { codigo: '+58', nombre: 'Venezuela (+58)', bandera: '🇻🇪' },
   ];
 
-  // FORMULARIO Y ESTADOS DE AUTENTICACIÓN
+  // ESTADOS DE LOGIN/REGISTRO
   const [isRegister, setIsRegister] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [nombreField, setNombreField] = useState('');
@@ -52,7 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [remember, setRemember] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
 
-  // FUNCIÓN AUXILIAR PARA EXTRAER SOLO DÍGITOS PUROS
+  // SANITIZACIÓN: Extraer solo dígitos puros
   const obtenerNumeroPuro = (val: string) => {
     if (!val) return '';
     let str = String(val).trim();
@@ -67,6 +67,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return str.replace(/\D/g, '');
   };
 
+  // ==========================================
+  // EFECTOS (CICLO DE VIDA)
+  // ==========================================
   useEffect(() => {
     const savedUser = localStorage.getItem('atom_user_session');
     if (savedUser) {
@@ -79,18 +82,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     setLoadingSession(false);
   }, []);
 
-  // Escuchar Colecciones de Firestore en tiempo real
+  // Listeners de Colecciones
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
     const qSuc = query(collection(db, 'sucursales'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubSuc = onSnapshot(qSuc, (snap) => setNumSucursales(snap.docs.length));
+    const unsubSuc = onSnapshot(qSuc, (snap) => setNumSucursales(snap.docs.length), (err) => console.error(err));
 
     const qVend = query(collection(db, 'usuarios'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubVend = onSnapshot(qVend, (snap) => setNumVendedores(snap.docs.length));
+    const unsubVend = onSnapshot(qVend, (snap) => setNumVendedores(snap.docs.length), (err) => console.error(err));
 
     const qProd = query(collection(db, 'productos'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubProd = onSnapshot(qProd, (snap) => setNumProductos(snap.docs.length));
+    const unsubProd = onSnapshot(qProd, (snap) => setNumProductos(snap.docs.length), (err) => console.error(err));
 
     return () => {
       unsubSuc();
@@ -99,7 +102,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     };
   }, [userAuth]);
 
-  // Cerrar Popover al hacer clic afuera
+  // Click Outside Popover
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
@@ -110,7 +113,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // MANEJADOR UNIFICADO DE AUTENTICACIÓN Y REGISTRO
+  // ==========================================
+  // LÓGICA DE AUTENTICACIÓN
+  // ==========================================
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userField || !passField) return alert('Ingresa tu correo / usuario y contraseña.');
@@ -120,21 +125,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
     try {
       if (isRegister) {
-        // ==========================================
-        // 1. REGISTRO DE NUEVA EMPRESA Y ADMIN (0 SEDES)
-        // ==========================================
+        // REGISTRO DE EMPRESA
         if (!nombreField.trim() || !telefonoField.trim()) {
           setLoadingAction(false);
-          return alert('Por favor ingresa el nombre de la empresa y tu número de teléfono / celular.');
+          return alert('Por favor ingresa el nombre de la empresa y tu número de celular.');
         }
 
-        // LIMPIEZA: Extraer únicamente los dígitos sin prefijo duplicado
         const numLimpio = obtenerNumeroPuro(telefonoField);
-
         const idCuenta = `CTA_${Date.now().toString().slice(-8)}`;
         const idUsuario = `USR_${Date.now().toString().slice(-8)}`;
 
-        // A. Crear Cuenta Corporativa (telefono_contacto guarda el número puro)
         await setDoc(doc(db, 'cuentas', idCuenta), {
           id_cuenta: idCuenta,
           nombre_empresa: nombreField.trim(),
@@ -146,13 +146,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           estado: 'ACTIVO'
         });
 
-        // B. Crear Usuario Administrador Principal (ADM)
         const usuarioAdminObj = {
           id_cuenta: idCuenta,
           id_usuario: idUsuario,
           id_sucursal: '',
           nombre: nombreField.trim(),
-          telefono: numLimpio, // <-- NÚMERO PURO SIN PREFIJO
+          telefono: numLimpio,
           indicativo_pais: indicativoField,
           user: term,
           email: term,
@@ -165,7 +164,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         await setDoc(doc(db, 'usuarios', idUsuario), usuarioAdminObj);
 
-        // C. Guardar Sesión con Rol ADMIN
         const sessionObj = {
           id_usuario: idUsuario,
           nombre: nombreField.trim(),
@@ -181,13 +179,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         setUserAuth(sessionObj);
         localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
-        alert('¡Empresa registrada con éxito como ADMINISTRADOR PRINCIPAL!');
+        alert('¡Empresa registrada con éxito!');
         router.push('/reportes');
 
       } else {
-        // ==========================================
-        // 2. INICIO DE SESIÓN
-        // ==========================================
+        // INICIO DE SESIÓN
         const qMin = query(collection(db, 'usuarios'), where('user', '==', term));
         let snap = await getDocs(qMin);
 
@@ -197,7 +193,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }
 
         if (snap.empty) {
-          alert('Usuario no encontrado. Haz clic en "Crear una cuenta nueva" para registrar tu empresa.');
+          alert('Usuario no encontrado. Haz clic en "Crear cuenta" para registrar tu empresa.');
           setLoadingAction(false);
           return;
         }
@@ -240,20 +236,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         setUserAuth(sessionObj);
         localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
 
-        // REDIRECCIÓN SEGÚN EL ROL
+        // REDIRECCIÓN RBAC
         if (userRol === 'ADMIN') {
           router.push('/reportes');
         } else if (userRol === 'GERENTE_BODEGA') {
           router.push('/productos');
         } else if (userRol === 'CONTABLE') {
-          router.push('/facturas'); // <--- NUEVA REDIRECCIÓN PARA EL CONTABLE
+          router.push('/facturas');
         } else {
           router.push('/ventas');
         }
       }
 
     } catch (err: any) {
-      alert('Error de conexión: ' + err.message);
+      if (err.name !== 'AbortError') {
+        alert('Error de conexión: ' + err.message);
+        console.error(err);
+      }
     } finally {
       setLoadingAction(false);
     }
@@ -265,17 +264,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     router.push('/');
   };
 
+  // ==========================================
+  // LÓGICA DE MENÚ Y ONBOARDING
+  // ==========================================
   const esCuentaNueva = numSucursales === 0 || numProductos === 0 || (numVendedores !== null && numVendedores <= 1);
   const rolActual = String(userAuth?.rol || 'ADMIN').toUpperCase();
 
-  // MENÚ LATERAL DE NAVEGACIÓN CON PERMISOS DE ROL
   const menuItems = [
     {
       label: 'Reportes / Analytics',
       path: '/reportes',
       disabled: false,
       badge: null,
-      rolesPermitidos: ['ADMIN', 'CONTABLE'], // <--- ACCESO PERMITIDO AL CONTABLE
+      rolesPermitidos: ['ADMIN', 'CONTABLE'],
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 012-2h2a2 2 0 012 2v6m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2M5 19V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2z" />
@@ -343,7 +344,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       path: '/facturas',
       disabled: false,
       badge: null,
-      rolesPermitidos: ['ADMIN', 'VENDEDOR', 'CONTABLE'], // <--- ACCESO PERMITIDO AL CONTABLE
+      rolesPermitidos: ['ADMIN', 'VENDEDOR', 'CONTABLE'],
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 01-2-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -386,6 +387,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   const menuVisibles = menuItems.filter(item => item.rolesPermitidos.includes(rolActual));
 
+  // ==========================================
+  // PANTALLAS (LOADING, LOGIN, LAYOUT)
+  // ==========================================
   if (loadingSession) {
     return (
       <html lang="es">
@@ -399,9 +403,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     );
   }
 
-  /* -------------------------------------------------------------------------- */
-  /* PANTALLA DE LOGIN Y REGISTRO DE EMPRESA                                    */
-  /* -------------------------------------------------------------------------- */
   if (!userAuth) {
     return (
       <html lang="es">
@@ -529,7 +530,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         </div>
                       </div>
 
-                      {/* SELECTOR DE PAÍS / INDICATIVO + NÚMERO DE TELÉFONO */}
                       <div className="relative border-b border-slate-700 focus-within:border-[#0DE8C0] transition-colors pb-1">
                         <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
                           País & Número Celular / Teléfono *
@@ -688,19 +688,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }
 
   /* -------------------------------------------------------------------------- */
-  /* CÁLCULO DE PROGRESO DE CONFIGURACIÓN INICIAL (ONBOARDING 0% A 100%)       */
+  /* ONBOARDING PROGRESS (Calculado de forma síncrona en base a Data)           */
   /* -------------------------------------------------------------------------- */
   let pasocumplidoCount = 0;
-  
-  // Paso 1: Datos Personales / Celular
   const pasoPerfilCompletado = !!(userAuth?.nombre && (userAuth?.telefono || userAuth?.num_doc));
   if (pasoPerfilCompletado) pasocumplidoCount++;
 
-  // Paso 2: Crear primera Sede real (numSucursales > 0)
   const pasoSedesCompletado = !!(numSucursales && numSucursales > 0);
   if (pasoSedesCompletado) pasocumplidoCount++;
 
-  // Paso 3: Vendedores / Equipo (numVendedores > 1)
   const pasoEquipoCompletado = !!(numVendedores && numVendedores > 1);
   if (pasoEquipoCompletado) pasocumplidoCount++;
 

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { collection, query, where, onSnapshot, doc, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function ProductosPage() {
@@ -13,18 +13,9 @@ export default function ProductosPage() {
 
   // LISTA OFICIAL DE CATEGORÍAS PREDEFINIDAS
   const CATEGORIAS_OFICIALES = [
-    'ALIMENTOS',
-    'AUTOMOTRIZ Y HERRAMIENTAS',
-    'BEBES Y JUGUETES',
-    'BELLEZA Y CUIDADO',
-    'DEPORTES',
-    'FERRETERIA',
-    'HOGAR',
-    'MASCOTAS',
-    'MODA',
-    'OFICINA Y PAPELERIA',
-    'SALUD',
-    'TECNOLOGIA'
+    'ALIMENTOS', 'AUTOMOTRIZ Y HERRAMIENTAS', 'BEBES Y JUGUETES', 'BELLEZA Y CUIDADO', 
+    'DEPORTES', 'FERRETERIA', 'HOGAR', 'MASCOTAS', 'MODA', 'OFICINA Y PAPELERIA', 
+    'SALUD', 'TECNOLOGIA'
   ];
 
   // Control de Vista: Tabla de Datos vs Tarjetas
@@ -46,11 +37,11 @@ export default function ProductosPage() {
   const [plocal, setPlocal] = useState<number | ''>('');
   const [pecom, setPecom] = useState<number | ''>('');
 
-  // CONFIGURACIÓN DE IVA EN EL PRODUCTO (PRECIO FINAL FIJO)
+  // CONFIGURACIÓN DE IVA EN EL PRODUCTO
   const [aplicaIva, setAplicaIva] = useState<boolean>(true);
   const [tarifaIva, setTarifaIva] = useState<number>(19);
 
-  // COSTOS UNITARIOS (UNIT ECONOMICS)
+  // COSTOS UNITARIOS
   const [costoImportacion, setCostoImportacion] = useState<number | ''>('');
   const [costoFulfilment, setCostoFulfilment] = useState<number | ''>('');
   const [imagenUrl, setImagenUrl] = useState('');
@@ -80,24 +71,21 @@ export default function ProductosPage() {
     }
   }, []);
 
-  // Escuchar Firestore
+  // ==========================================
+  // ESCUCHAR FIRESTORE (⚠️ Deuda Técnica de Escalabilidad en Ventas)
+  // ==========================================
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
     const qProd = query(collection(db, 'productos'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubProd = onSnapshot(qProd, (snap) => {
-      setProductos(snap.docs.map(d => ({ ...d.data(), sku: d.id })));
-    });
+    const unsubProd = onSnapshot(qProd, (snap) => setProductos(snap.docs.map(d => ({ ...d.data(), sku: d.id }))), (err) => console.error(err));
 
     const qSuc = query(collection(db, 'sucursales'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubSuc = onSnapshot(qSuc, (snap) => {
-      setSucursales(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    const unsubSuc = onSnapshot(qSuc, (snap) => setSucursales(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))), (err) => console.error(err));
 
+    // ⚠️ ALERTA: Traer todas las ventas de la historia para calcular la "rotación" colapsará con miles de datos.
     const qVent = query(collection(db, 'ventas'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubVent = onSnapshot(qVent, (snap) => {
-      setVentas(snap.docs.map(d => d.data()));
-    });
+    const unsubVent = onSnapshot(qVent, (snap) => setVentas(snap.docs.map(d => d.data())), (err) => console.error(err));
 
     return () => {
       unsubProd();
@@ -106,65 +94,60 @@ export default function ProductosPage() {
     };
   }, [userAuth]);
 
-  // Rotación (Días sin venta)
-  const obtenerDiasSinMovimiento = (sku: string) => {
-    const ventasSku = ventas.filter(v => {
-      if (Array.isArray(v.items)) {
-        return v.items.some((it: any) => it.sku === sku);
-      }
-      return v.sku === sku;
-    });
-
-    if (ventasSku.length === 0) return 999;
-
-    let maxFechaMs = 0;
-    ventasSku.forEach(v => {
-      const fStr = v.fecha_cobro || v.fecha;
-      if (fStr) {
-        const ms = new Date(fStr).getTime();
-        if (ms > maxFechaMs) maxFechaMs = ms;
-      }
-    });
-
-    if (maxFechaMs === 0) return 999;
-
+  // ==========================================
+  // 🧠 RENDIMIENTO: PRE-CÁLCULO DE ÚLTIMA VENTA
+  // ==========================================
+  // Evitamos recalcular los días inactivos por cada letra que se escribe en el buscador
+  const diasSinVentaPorSku = useMemo(() => {
+    const map: { [sku: string]: number } = {};
     const hoyMs = new Date().getTime();
-    const difDias = Math.floor((hoyMs - maxFechaMs) / (1000 * 60 * 60 * 24));
-    return Math.max(0, difDias);
-  };
+
+    // 1. Encontrar la fecha máxima por SKU
+    ventas.forEach(v => {
+      const ms = v.fecha_cobro || v.fecha ? new Date(v.fecha_cobro || v.fecha).getTime() : 0;
+      if (ms === 0) return;
+
+      const procesarItem = (sku: string) => {
+        if (!map[sku] || ms > map[sku]) map[sku] = ms;
+      };
+
+      if (Array.isArray(v.items)) {
+        v.items.forEach((it: any) => procesarItem(it.sku));
+      } else if (v.sku) {
+        procesarItem(v.sku);
+      }
+    });
+
+    // 2. Convertir a días de diferencia
+    const resultado: { [sku: string]: number } = {};
+    productos.forEach(p => {
+      const maxMs = map[p.sku];
+      resultado[p.sku] = maxMs ? Math.max(0, Math.floor((hoyMs - maxMs) / (1000 * 60 * 60 * 24))) : 999;
+    });
+
+    return resultado;
+  }, [ventas, productos]);
 
   const obtenerStockTotalProducto = (p: any, idBod?: string) => {
     const stMap = p.stock || {};
-    if (idBod && idBod !== 'TODAS') {
-      return Number(stMap[idBod] || 0);
-    }
+    if (idBod && idBod !== 'TODAS') return Number(stMap[idBod] || 0);
     return Object.values(stMap).reduce((acc: number, val: any) => acc + (Number(val) || 0), 0);
   };
 
-  // Convertir archivo local de imagen a Base64
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('La imagen no debe superar los 2MB de tamaño.');
-      return;
-    }
+    if (file.size > 2 * 1024 * 1024) return alert('La imagen no debe superar los 2MB de tamaño.');
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagenUrl(reader.result as string);
-    };
+    reader.onloadend = () => setImagenUrl(reader.result as string);
     reader.readAsDataURL(file);
   };
 
-  // DETERMINAR SEDES AUTORIZADAS QUE PUEDE EDITAR EL USUARIO ACTUAL
   const obtenerSedesAutorizadasUsuario = () => {
     if (!userAuth) return [];
-
-    if (userAuth.rol === 'ADMIN') {
-      return sucursales.filter(s => s.estado !== 'INACTIVA');
-    }
+    if (userAuth.rol === 'ADMIN') return sucursales.filter(s => s.estado !== 'INACTIVA');
 
     let sedesUserIds: string[] = [];
     if (Array.isArray(userAuth.sedes_asignadas) && userAuth.sedes_asignadas.length > 0) {
@@ -172,7 +155,6 @@ export default function ProductosPage() {
     } else if (userAuth.id_sucursal) {
       sedesUserIds = [userAuth.id_sucursal];
     }
-
     return sucursales.filter(s => s.estado !== 'INACTIVA' && sedesUserIds.includes(s.id_sucursal));
   };
 
@@ -192,9 +174,7 @@ export default function ProductosPage() {
 
     const sedesPermitidas = obtenerSedesAutorizadasUsuario();
     const initialStockMap: { [key: string]: number } = {};
-    sedesPermitidas.forEach(s => {
-      if (s.id_sucursal) initialStockMap[s.id_sucursal] = 0;
-    });
+    sedesPermitidas.forEach(s => { if (s.id_sucursal) initialStockMap[s.id_sucursal] = 0; });
 
     setStockMap(initialStockMap);
     setMotivoEdicion('');
@@ -222,8 +202,7 @@ export default function ProductosPage() {
     setCostoFulfilment(p.costo_fulfilment !== undefined ? p.costo_fulfilment : '');
     setImagenUrl(p.imagen_url || '');
     
-    const currentStockMap = p.stock || {};
-    setStockMap(currentStockMap);
+    setStockMap(p.stock || {});
     setMotivoEdicion('');
     setHistorialCambios(Array.isArray(p.historial_cambios) ? p.historial_cambios : []);
     setActiveModalTab('DATOS');
@@ -231,49 +210,36 @@ export default function ProductosPage() {
   };
 
   const handleStockSedeChange = (idSucursal: string, cant: number) => {
-    setStockMap(prev => ({
-      ...prev,
-      [idSucursal]: Math.max(0, cant)
-    }));
+    setStockMap(prev => ({ ...prev, [idSucursal]: Math.max(0, cant) }));
   };
 
-  // CÁLCULO DE DESGLOSE DE IVA
   const calcularBaseEIVA = (precioFinal: number, tarifa: number, incluye: boolean) => {
-    if (!incluye || tarifa <= 0) {
-      return { base: precioFinal, iva: 0 };
-    }
+    if (!incluye || tarifa <= 0) return { base: precioFinal, iva: 0 };
     const base = precioFinal / (1 + (tarifa / 100));
-    const iva = precioFinal - base;
-    return { base, iva };
+    return { base, iva: precioFinal - base };
   };
 
-  // AUXILIAR DE LIMPIEZA DE FORMATEOS FINANCIEROS
   const parseMontoPuro = (val: any) => {
     if (val === undefined || val === null) return 0;
     let numStr = String(val).replace(/[\$\s"]/g, '').trim();
     if (!numStr) return 0;
-    if (numStr.includes(',')) {
-      numStr = numStr.replace(/\./g, '').replace(',', '.');
-    }
+    if (numStr.includes(',')) numStr = numStr.replace(/\./g, '').replace(',', '.');
     const parsed = Number(numStr);
     return isNaN(parsed) ? 0 : parsed;
   };
 
-  // GUARDAR O ACTUALIZAR PRODUCTO
+  // ==========================================
+  // CREACIÓN/EDICIÓN MANUAL
+  // ==========================================
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!skuInput.trim() || !nombre.trim()) {
-      return alert('Ingresa el SKU y el Nombre del producto.');
-    }
+    if (!skuInput.trim() || !nombre.trim()) return alert('Ingresa el SKU y el Nombre del producto.');
 
     const skuClean = skuInput.trim().toUpperCase();
 
-    // VALIDACIÓN: NO PERMITIR SKU REPETIDOS EN CREACIÓN
     if (!editingSku) {
       const existeProd = productos.some(p => String(p.sku || '').toUpperCase() === skuClean);
-      if (existeProd) {
-        return alert(`El SKU "${skuClean}" ya existe en el sistema. Utiliza un SKU único o edita el producto existente.`);
-      }
+      if (existeProd) return alert(`El SKU "${skuClean}" ya existe. Utiliza un SKU único o edita el producto.`);
     }
 
     if (editingSku && !motivoEdicion.trim()) {
@@ -283,7 +249,6 @@ export default function ProductosPage() {
     setLoading(true);
     try {
       const fechaActualISO = new Date().toISOString();
-
       const precioDefinido = Number(plocal) || Number(pecom) || Number(pmayor) || 0;
       const tarifaAplicada = aplicaIva ? Number(tarifaIva) : 0;
       const { base, iva } = calcularBaseEIVA(precioDefinido, tarifaAplicada, aplicaIva);
@@ -342,10 +307,10 @@ export default function ProductosPage() {
 
       await setDoc(doc(db, 'productos', skuClean), prodObj, { merge: true });
       setShowModal(false);
-      alert(editingSku ? '¡Producto e IVA actualizados con éxito!' : '¡Producto registrado con éxito!');
+      alert(editingSku ? '¡Producto actualizado con éxito!' : '¡Producto registrado con éxito!');
     } catch (err: any) {
       console.error(err);
-      alert('Error al guardar el producto en Firestore: ' + err.message);
+      alert('Error al guardar el producto: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -354,7 +319,6 @@ export default function ProductosPage() {
   const handleDelete = async (e: React.MouseEvent, p: any) => {
     e.stopPropagation();
     if (!confirm(`¿Estás seguro de eliminar el producto ${p.nombre} (SKU: ${p.sku})?`)) return;
-
     try {
       await deleteDoc(doc(db, 'productos', p.sku));
     } catch (err: any) {
@@ -363,7 +327,6 @@ export default function ProductosPage() {
     }
   };
 
-  // DESCARGAR PLANTILLA CSV DE PRODUCTOS
   const handleDescargarPlantillaProductos = () => {
     const bom = '\uFEFF';
     const csvContent = 
@@ -383,7 +346,9 @@ export default function ProductosPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA CON VALIDACIÓN DE CATEGORÍA OFICIAL Y COLUMNAS
+  // ==========================================
+  // 🛡️ CARGA MASIVA (CON TRANSACCIONES BATCH)
+  // ==========================================
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileMasivo) return alert('Por favor selecciona un archivo CSV.');
@@ -394,9 +359,7 @@ export default function ProductosPage() {
     reader.onload = async (evt) => {
       try {
         const text = evt.target?.result as string;
-        const lines = text.split('\n')
-          .map(l => l.trim())
-          .filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
 
         if (lines.length <= 1) {
           alert('El archivo está vacío o solo contiene encabezados.');
@@ -407,12 +370,11 @@ export default function ProductosPage() {
         const separador = lines[0].includes(';') ? ';' : ',';
         const headers = lines[0].split(separador).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
 
-        // COLUMNAS CLAVE OBLIGATORIAS
         const columnasRequeridas = ['sku', 'nombre', 'categoria', 'precio_tienda_fisica'];
         const columnasFaltantes = columnasRequeridas.filter(col => !headers.includes(col));
 
         if (columnasFaltantes.length > 0) {
-          alert(`⛔ Formato Inválido:\n\nEl archivo cargado no coincide con la plantilla oficial de productos.\nFaltan las siguientes columnas obligatorias: [ ${columnasFaltantes.join(', ')} ]\n\nPor favor descarga la plantilla CSV oficial e inténtalo de nuevo.`);
+          alert(`⛔ Formato Inválido:\nFaltan las siguientes columnas: [ ${columnasFaltantes.join(', ')} ]`);
           setLoadingMasivo(false);
           return;
         }
@@ -431,12 +393,20 @@ export default function ProductosPage() {
         const idxSede = headers.indexOf('sede');
 
         const idSedeDefecto = userAuth?.id_sucursal || (sucursales.length > 0 ? sucursales[0].id_sucursal : 'SUC_PRINCIPAL');
+        const fechaActualISO = new Date().toISOString();
+        
         let nuevosCreados = 0;
         let actualizados = 0;
+
+        // MANEJO BATCH (Máximo 500 por lote en Firestore)
+        const batchArray: any[] = [writeBatch(db)];
+        let operacionCount = 0;
+        let batchIndex = 0;
 
         for (let i = 1; i < lines.length; i++) {
           const cols = lines[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
           if (cols.length >= 2 && cols[idxSku] && cols[idxSku] !== '') {
+            
             const skuClean = cols[idxSku].toUpperCase();
             const nombreProd = cols[idxNombre] || 'Producto Sin Nombre';
             
@@ -447,7 +417,6 @@ export default function ProductosPage() {
             const precioFisica = parseMontoPuro(cols[idxPPos]) || precioMayor;
             const precioEcom = idxPEcom !== -1 ? (parseMontoPuro(cols[idxPEcom]) || precioFisica) : precioFisica;
 
-            // RECONOCIMIENTO DE IVA
             const ivaIncluText = idxIvaInclu !== -1 ? (cols[idxIvaInclu] || 'SI').toUpperCase() : 'SI';
             const aplicaIvaBool = ivaIncluText === 'SI' || ivaIncluText === '1' || ivaIncluText === 'TRUE';
             const tarifaIvaNum = aplicaIvaBool ? (idxTarifaIva !== -1 ? (parseMontoPuro(cols[idxTarifaIva]) || 19) : 19) : 0;
@@ -463,101 +432,87 @@ export default function ProductosPage() {
                 s.id_sucursal === sedeNombreInput || 
                 (s.nombre || s.NOMBRE || '').toLowerCase() === sedeNombreInput.toLowerCase()
               );
-              if (sucMat) {
-                idSedeDestino = sucMat.id_sucursal;
-              }
+              if (sucMat) idSedeDestino = sucMat.id_sucursal;
             }
 
             const { base, iva } = calcularBaseEIVA(precioFisica, tarifaIvaNum, aplicaIvaBool);
-
             const docRef = doc(db, 'productos', skuClean);
-            const docSnap = await getDoc(docRef);
-            const fechaActualISO = new Date().toISOString();
+            
+            // Validar si existe (Lo hacemos leyendo el state local de `productos` para ahorrar lecturas)
+            const prodExistente = productos.find(p => p.sku === skuClean);
 
-            if (docSnap.exists()) {
-              const dataExistente = docSnap.data();
-              const stockExistente = dataExistente.stock || {};
-              const historialExistente = Array.isArray(dataExistente.historial_cambios) ? dataExistente.historial_cambios : [];
+            const baseObj = {
+              id_cuenta: userAuth.id_cuenta,
+              sku: skuClean,
+              nombre: nombreProd,
+              categoria: catProd,
+              pmayor: precioMayor,
+              plocal: precioFisica,
+              pecom: precioEcom,
+              precio: precioFisica,
+              aplica_iva: aplicaIvaBool,
+              iva: tarifaIvaNum,
+              base_gravable_estimada: base,
+              iva_monto_estimado: iva,
+              costo_importacion: costoImp,
+              costo_fulfilment: costoFul,
+              costo_total: costoImp + costoFul,
+              fecha_actualizacion: fechaActualISO
+            };
 
-              const nuevoStockActualizado = {
-                ...stockExistente,
-                [idSedeDestino]: stockCant
-              };
+            let finalObj;
 
-              const nuevoCambioActualizacion = {
-                fecha: fechaActualISO,
-                usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
-                usuario_id: userAuth?.id_usuario || '',
-                usuario_rol: userAuth?.rol || 'ADMIN',
-                motivo: `Actualización Masiva via CSV (Sede: ${idSedeDestino})`
-              };
-
-              const prodActualizadoObj = {
-                id_cuenta: userAuth.id_cuenta,
-                sku: skuClean,
-                nombre: nombreProd,
-                categoria: catProd,
-                pmayor: precioMayor,
-                plocal: precioFisica,
-                pecom: precioEcom,
-                precio: precioFisica,
-
-                aplica_iva: aplicaIvaBool,
-                iva: tarifaIvaNum,
-                base_gravable_estimada: base,
-                iva_monto_estimado: iva,
-
-                costo_importacion: costoImp,
-                costo_fulfilment: costoFul,
-                costo_total: costoImp + costoFul,
-                stock: nuevoStockActualizado,
-                historial_cambios: [nuevoCambioActualizacion, ...historialExistente],
-                fecha_actualizacion: fechaActualISO
-              };
-
-              await setDoc(docRef, prodActualizadoObj, { merge: true });
+            if (prodExistente) {
               actualizados++;
-            } else {
-              const prodNuevoObj = {
-                id_cuenta: userAuth.id_cuenta,
-                sku: skuClean,
-                nombre: nombreProd,
-                categoria: catProd,
-                pmayor: precioMayor,
-                plocal: precioFisica,
-                pecom: precioEcom,
-                precio: precioFisica,
-
-                aplica_iva: aplicaIvaBool,
-                iva: tarifaIvaNum,
-                base_gravable_estimada: base,
-                iva_monto_estimado: iva,
-
-                costo_importacion: costoImp,
-                costo_fulfilment: costoFul,
-                costo_total: costoImp + costoFul,
-                stock: {
-                  [idSedeDestino]: stockCant
-                },
+              const stockPrevio = prodExistente.stock || {};
+              finalObj = {
+                ...baseObj,
+                stock: { ...stockPrevio, [idSedeDestino]: stockCant },
                 historial_cambios: [
                   {
                     fecha: fechaActualISO,
                     usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
                     usuario_id: userAuth?.id_usuario || '',
                     usuario_rol: userAuth?.rol || 'ADMIN',
-                    motivo: `Carga Masiva via CSV (Creación Inicial)`
-                  }
-                ],
-                fecha_actualizacion: fechaActualISO
+                    motivo: `Actualización Masiva via CSV (Sede: ${idSedeDestino})`
+                  },
+                  ...(Array.isArray(prodExistente.historial_cambios) ? prodExistente.historial_cambios : [])
+                ]
               };
-
-              await setDoc(docRef, prodNuevoObj, { merge: true });
+            } else {
               nuevosCreados++;
+              finalObj = {
+                ...baseObj,
+                stock: { [idSedeDestino]: stockCant },
+                historial_cambios: [{
+                  fecha: fechaActualISO,
+                  usuario_nombre: userAuth?.nombre || 'Usuario ATOM',
+                  usuario_id: userAuth?.id_usuario || '',
+                  usuario_rol: userAuth?.rol || 'ADMIN',
+                  motivo: `Carga Masiva via CSV (Creación Inicial)`
+                }]
+              };
+            }
+
+            // Agrega al batch
+            batchArray[batchIndex].set(docRef, finalObj, { merge: true });
+            operacionCount++;
+
+            // Firestore permite máx 500 escrituras por batch
+            if (operacionCount === 490) {
+              batchArray.push(writeBatch(db));
+              batchIndex++;
+              operacionCount = 0;
             }
           }
         }
 
-        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Nuevos Registrados: ${nuevosCreados}\n🔄 Actualizados a última versión: ${actualizados}`);
+        // Ejecutar todos los batches
+        for (const batch of batchArray) {
+          await batch.commit();
+        }
+
+        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Nuevos Registrados: ${nuevosCreados}\n🔄 Actualizados: ${actualizados}`);
         setFileMasivo(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         setShowModalMasivo(false);
@@ -571,32 +526,40 @@ export default function ProductosPage() {
     reader.readAsText(fileMasivo);
   };
 
-  // Filtrado de Productos
-  const productosFiltrados = productos.filter(p => {
+  // ==========================================
+  // 🧠 RENDIMIENTO: FILTRADO OPTIMIZADO
+  // ==========================================
+  const { productosFiltrados, totalBajoStockCount, totalInactivos120Count, valorTotalInventario } = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    const matchSearch = String(p.nombre || '').toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q) || String(p.categoria || '').toLowerCase().includes(q);
     
-    if (!matchSearch) return false;
+    const filtrados = productos.filter(p => {
+      const matchSearch = String(p.nombre || '').toLowerCase().includes(q) || 
+                          String(p.sku || '').toLowerCase().includes(q) || 
+                          String(p.categoria || '').toLowerCase().includes(q);
+      if (!matchSearch) return false;
 
-    const stockTotal = obtenerStockTotalProducto(p, bodegaFiltro);
-    const diasSinMov = obtenerDiasSinMovimiento(p.sku);
+      const stockTotal = obtenerStockTotalProducto(p, bodegaFiltro);
+      const diasSinMov = diasSinVentaPorSku[p.sku] ?? 999;
 
-    if (filtroStockRotacion === 'BAJO_STOCK') return stockTotal <= 5;
-    if (filtroStockRotacion === 'INTERMEDIO') return stockTotal > 5 && stockTotal <= 20;
-    if (filtroStockRotacion === 'INACTIVO_60') return diasSinMov >= 60;
-    if (filtroStockRotacion === 'INACTIVO_90') return diasSinMov >= 90;
-    if (filtroStockRotacion === 'INACTIVO_120') return diasSinMov >= 120;
+      if (filtroStockRotacion === 'BAJO_STOCK') return stockTotal <= 5;
+      if (filtroStockRotacion === 'INTERMEDIO') return stockTotal > 5 && stockTotal <= 20;
+      if (filtroStockRotacion === 'INACTIVO_60') return diasSinMov >= 60;
+      if (filtroStockRotacion === 'INACTIVO_90') return diasSinMov >= 90;
+      if (filtroStockRotacion === 'INACTIVO_120') return diasSinMov >= 120;
 
-    return true;
-  });
+      return true;
+    });
 
-  const totalBajoStockCount = productos.filter(p => obtenerStockTotalProducto(p) <= 5).length;
-  const totalInactivos120Count = productos.filter(p => obtenerDiasSinMovimiento(p.sku) >= 120).length;
-  const valorTotalInventario = productos.reduce((acc, p) => acc + (obtenerStockTotalProducto(p) * (p.plocal || p.precio || 0)), 0);
+    return {
+      productosFiltrados: filtrados,
+      totalBajoStockCount: productos.filter(p => obtenerStockTotalProducto(p) <= 5).length,
+      totalInactivos120Count: productos.filter(p => (diasSinVentaPorSku[p.sku] ?? 999) >= 120).length,
+      valorTotalInventario: productos.reduce((acc, p) => acc + (obtenerStockTotalProducto(p) * (p.plocal || p.precio || 0)), 0)
+    };
+  }, [productos, searchQuery, bodegaFiltro, filtroStockRotacion, diasSinVentaPorSku]);
+
 
   const sedesFormulario = obtenerSedesAutorizadasUsuario();
-
-  // Valores calculados en el formulario activo
   const precioReferenciaForm = Number(plocal) || Number(pecom) || Number(pmayor) || 0;
   const tarifaCalculoForm = aplicaIva ? Number(tarifaIva) : 0;
   const desgloseForm = calcularBaseEIVA(precioReferenciaForm, tarifaCalculoForm, aplicaIva);
@@ -1054,7 +1017,7 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {/* MODAL CREAR / EDITAR PRODUCTO CON ÍCONOS 2D PLANOS E INPUTS SIN FLECHAS */}
+      {/* MODAL CREAR / EDITAR PRODUCTO */}
       {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl font-sans max-h-[90vh] overflow-y-auto">
@@ -1063,7 +1026,6 @@ export default function ProductosPage() {
               <h3 className="text-lg font-satoshi-black text-white uppercase tracking-wide">
                 {editingSku ? `Editar SKU: ${editingSku}` : 'Nuevo Producto'}
               </h3>
-
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white transition">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1108,7 +1070,7 @@ export default function ProductosPage() {
             {activeModalTab === 'DATOS' && (
               <form onSubmit={handleSave} className="space-y-4">
                 
-                {/* SUBIDA DE IMAGEN CON ÍCONO 2D PLANO */}
+                {/* SUBIDA DE IMAGEN */}
                 <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 space-y-3">
                   <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
                     <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1123,7 +1085,7 @@ export default function ProductosPage() {
                         <img src={imagenUrl} alt="Vista Previa" className="w-full h-full object-cover" />
                       ) : (
                         <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 002-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       )}
                     </div>
@@ -1199,7 +1161,7 @@ export default function ProductosPage() {
                   </select>
                 </div>
 
-                {/* ASIGNACIÓN DE INVENTARIO CON ÍCONO 2D PLANO */}
+                {/* ASIGNACIÓN DE INVENTARIO */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
@@ -1238,7 +1200,7 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
-                {/* ESTRUCTURA DE PRECIOS CON ÍCONO 2D PLANO */}
+                {/* ESTRUCTURA DE PRECIOS */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
                     <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1283,7 +1245,7 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
-                {/* UNIT ECONOMICS: COSTOS UNITARIOS CON ÍCONO 2D PLANO */}
+                {/* UNIT ECONOMICS */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">
                     <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1323,7 +1285,7 @@ export default function ProductosPage() {
                   </div>
                 </div>
 
-                {/* MÓDULO DE CONFIGURACIÓN DE IVA CON ÍCONO 2D PLANO */}
+                {/* MÓDULO DE CONFIGURACIÓN DE IVA */}
                 <div className="bg-[#1D2935] border border-slate-700 p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-satoshi-black text-[#0DE8C0] uppercase flex items-center gap-1.5">

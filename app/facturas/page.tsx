@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { collection, query, where, onSnapshot, doc, getDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function FacturasPage() {
@@ -51,7 +51,9 @@ export default function FacturasPage() {
     }
   }, []);
 
-  // ESCUCHAR FIRESTORE EN TIEMPO REAL
+  // ==========================================
+  // ESCUCHAR FIRESTORE EN TIEMPO REAL (⚠️ Deuda Técnica de Escalabilidad)
+  // ==========================================
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
@@ -65,15 +67,14 @@ export default function FacturasPage() {
         where('vendedor_nombre', '==', userAuth.nombre)
       );
     } else {
-      q = query(
-        collection(db, 'ventas'),
-        where('id_cuenta', '==', userAuth.id_cuenta)
-      );
+      // ⚠️ ALERTA: Traer todas las ventas de la historia para luego filtrar localmente agotará la cuota de DB.
+      q = query(collection(db, 'ventas'), where('id_cuenta', '==', userAuth.id_cuenta));
     }
 
-    const unsub = onSnapshot(q, (snap) => {
-      setFacturas(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    const unsub = onSnapshot(q, 
+      (snap) => setFacturas(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))),
+      (err) => console.error("Error cargando facturas:", err)
+    );
 
     return () => unsub();
   }, [userAuth]);
@@ -85,58 +86,75 @@ export default function FacturasPage() {
     setPaginaActual(1);
   }, [searchQuery, filtroEstado, mesFiltro, anioFiltro, ordenFecha]);
 
-  // FILTRADO DE FACTURAS POR MES Y AÑO
-  const facturasPorMesYAnio = facturas.filter(f => {
-    const fechaStr = f.fecha_cobro || f.fecha;
-    if (!fechaStr) return false;
-    const fechaObj = new Date(fechaStr);
-    return fechaObj.getMonth() === mesFiltro && fechaObj.getFullYear() === anioFiltro;
-  });
+  // ==========================================
+  // 🧠 RENDIMIENTO: LÓGICA MEMOIZADA (Filtros, Orden y Paginación)
+  // ==========================================
+  const {
+    facturasPaginadas,
+    totalFacturasCount,
+    totalPaginas,
+    totalFacturadoMes,
+    totalEmitidasMes,
+    totalAnuladasMes,
+    facturasParaExportar // Se usa para el CSV
+  } = useMemo(() => {
+    // 1. Filtrado por Mes y Año
+    const porPeriodo = facturas.filter(f => {
+      const fechaStr = f.fecha_cobro || f.fecha;
+      if (!fechaStr) return false;
+      const fechaObj = new Date(fechaStr);
+      return fechaObj.getMonth() === mesFiltro && fechaObj.getFullYear() === anioFiltro;
+    });
 
-  const facturasFiltradas = facturasPorMesYAnio.filter(f => {
+    // 2. Filtrado por Texto y Estado
     const q = searchQuery.toLowerCase().trim();
-    const matchSearch = String(f.id_factura || '').toLowerCase().includes(q) ||
-                        String(f.cliente_nombre || '').toLowerCase().includes(q) ||
-                        String(f.cliente_nit || '').toLowerCase().includes(q) ||
-                        String(f.nombre_bodega || '').toLowerCase().includes(q) ||
-                        String(f.orden_referencia || '').toLowerCase().includes(q);
-    
-    if (!matchSearch) return false;
+    const porBusquedaYEstado = porPeriodo.filter(f => {
+      const matchSearch = String(f.id_factura || '').toLowerCase().includes(q) ||
+                          String(f.cliente_nombre || '').toLowerCase().includes(q) ||
+                          String(f.cliente_nit || '').toLowerCase().includes(q) ||
+                          String(f.nombre_bodega || '').toLowerCase().includes(q) ||
+                          String(f.orden_referencia || '').toLowerCase().includes(q);
+      
+      if (!matchSearch) return false;
 
-    const estadoFactura = String(f.estado || 'EMITIDA').toUpperCase();
+      const estadoFactura = String(f.estado || 'EMITIDA').toUpperCase();
+      if (filtroEstado === 'EMITIDA') return estadoFactura === 'EMITIDA' || estadoFactura === 'PAGADA';
+      if (filtroEstado === 'PENDIENTE') return estadoFactura === 'PENDIENTE';
+      if (filtroEstado === 'ANULADA') return estadoFactura === 'ANULADA';
 
-    if (filtroEstado === 'EMITIDA') return estadoFactura === 'EMITIDA' || estadoFactura === 'PAGADA';
-    if (filtroEstado === 'PENDIENTE') return estadoFactura === 'PENDIENTE';
-    if (filtroEstado === 'ANULADA') return estadoFactura === 'ANULADA';
+      return true;
+    });
 
-    return true;
-  });
+    // 3. Ordenamiento
+    const ordenadas = [...porBusquedaYEstado].sort((a, b) => {
+      const fechaA = new Date(a.fecha_cobro || a.fecha || 0).getTime();
+      const fechaB = new Date(b.fecha_cobro || b.fecha || 0).getTime();
+      return ordenFecha === 'NUEVAS_PRIMERO' ? fechaB - fechaA : fechaA - fechaB;
+    });
 
-  // ORDENAMIENTO POR FECHA
-  const facturasOrdenadas = [...facturasFiltradas].sort((a, b) => {
-    const fechaA = new Date(a.fecha_cobro || a.fecha || 0).getTime();
-    const fechaB = new Date(b.fecha_cobro || b.fecha || 0).getTime();
+    // 4. Paginación
+    const totalCount = ordenadas.length;
+    const paginas = Math.ceil(totalCount / ventasPorPagina) || 1;
+    const idxInicio = (paginaActual - 1) * ventasPorPagina;
+    const paginadas = ordenadas.slice(idxInicio, idxInicio + ventasPorPagina);
 
-    if (ordenFecha === 'NUEVAS_PRIMERO') {
-      return fechaB - fechaA;
-    } else {
-      return fechaA - fechaB;
-    }
-  });
+    // 5. Métricas del periodo
+    const validas = porPeriodo.filter(f => String(f.estado || '').toUpperCase() !== 'ANULADA');
+    const anuladas = porPeriodo.filter(f => String(f.estado || '').toUpperCase() === 'ANULADA');
+    const facturado = validas.reduce((acc, f) => acc + (Number(f.total) || 0), 0);
 
-  // LÓGICA DE PAGINACIÓN (50 POR PÁGINA)
-  const totalFacturasCount = facturasOrdenadas.length;
-  const totalPaginas = Math.ceil(totalFacturasCount / ventasPorPagina) || 1;
+    return {
+      facturasPaginadas: paginadas,
+      totalFacturasCount: totalCount,
+      totalPaginas: paginas,
+      totalFacturadoMes: facturado,
+      totalEmitidasMes: validas.length,
+      totalAnuladasMes: anuladas.length,
+      facturasParaExportar: porBusquedaYEstado // Guardamos esto filtrado para el botón exportar
+    };
+  }, [facturas, mesFiltro, anioFiltro, searchQuery, filtroEstado, ordenFecha, paginaActual]);
+
   const indiceInicial = (paginaActual - 1) * ventasPorPagina;
-  const facturasPaginadas = facturasOrdenadas.slice(indiceInicial, indiceInicial + ventasPorPagina);
-
-  // MÉTRICAS CALCULADAS EN TIEMPO REAL CON RECONOCIMIENTO DE ANULADAS
-  const totalFacturadoMes = facturasPorMesYAnio
-    .filter(f => String(f.estado || '').toUpperCase() !== 'ANULADA')
-    .reduce((acc, f) => acc + (Number(f.total) || 0), 0);
-
-  const totalEmitidasMes = facturasPorMesYAnio.filter(f => String(f.estado || '').toUpperCase() !== 'ANULADA').length;
-  const totalAnuladasMes = facturasPorMesYAnio.filter(f => String(f.estado || '').toUpperCase() === 'ANULADA').length;
 
   // DESCARGAR PLANTILLA COMPLETA DE FACTURACIÓN ELECTRÓNICA DIAN
   const handleDescargarPlantilla = () => {
@@ -156,7 +174,9 @@ export default function FacturasPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR CARGA MASIVA DE FACTURAS CON ACTUALIZACIÓN POR ORDEN_ID
+  // ==========================================
+  // 🛡️ CARGA MASIVA CON WRITEBATCH (Seguridad y Consistencia)
+  // ==========================================
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!archivoCSV) return alert('Selecciona un archivo CSV para procesar.');
@@ -167,9 +187,7 @@ export default function FacturasPage() {
     reader.onload = async (evt: ProgressEvent<FileReader>) => {
       try {
         const texto = (evt.target?.result || '') as string;
-        const lineas = texto.split('\n')
-          .map(l => l.trim())
-          .filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
+        const lineas = texto.split('\n').map(l => l.trim()).filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
 
         if (lineas.length <= 1) {
           alert('El archivo CSV está vacío o no contiene filas de datos.');
@@ -180,12 +198,11 @@ export default function FacturasPage() {
         const separador = lineas[0].includes(';') ? ';' : ',';
         const headers = lineas[0].split(separador).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
 
-        // VALIDACIÓN ESTRICTA DE COLUMNAS CLAVE DE LA PLANTILLA DE FACTURAS
         const columnasRequeridas = ['orden_id', 'cliente_nit', 'cliente_nombre', 'producto', 'precio_unitario'];
         const columnasFaltantes = columnasRequeridas.filter(col => !headers.includes(col));
 
         if (columnasFaltantes.length > 0) {
-          alert(`⛔ Formato Inválido:\n\nEl archivo cargado no coincide con la plantilla oficial de Facturación / E-Commerce.\nFaltan los encabezados obligatorios: [ ${columnasFaltantes.join(', ')} ]\n\nPor favor descarga la plantilla CSV oficial e inténtalo de nuevo.`);
+          alert(`⛔ Formato Inválido:\nFaltan los encabezados obligatorios: [ ${columnasFaltantes.join(', ')} ]`);
           setLoadingEcom(false);
           return;
         }
@@ -209,8 +226,16 @@ export default function FacturasPage() {
         let creadosCount = 0;
         let actualizadosCount = 0;
 
+        // BATCH PROCESSING: Para evitar data inconsistente si falla a la mitad
+        const batchArray: any[] = [writeBatch(db)];
+        let batchIndex = 0;
+        let opCount = 0;
+        const fechaActualISO = new Date().toISOString();
+
+        // DEUDA TÉCNICA: Leer el getDoc en un loop es costoso, pero necesario para no sobre-escribir lógica de negocio
         for (let i = 1; i < lineas.length; i++) {
           const columnas = lineas[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
+          
           if (columnas.length >= 5 && columnas[idxCliente] && columnas[idxCliente] !== '') {
             const ordenIdRaw = (idxOrdenId !== -1 && columnas[idxOrdenId]) ? columnas[idxOrdenId].trim() : '';
             const ordenId = ordenIdRaw || `ORD-${Date.now().toString().slice(-4)}_${i}`;
@@ -235,10 +260,10 @@ export default function FacturasPage() {
             const ivaMonto = (subtotal * ivaPct) / 100;
             const total = subtotal + ivaMonto;
 
-            // IDENTIFICADOR ÚNICO BASADO EN EL ORDEN_ID PARA PERMITIR RE-PROCESAMIENTO Y ACTUALIZACIÓN
             const idFacturaDoc = `FACT_${ordenId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-
             const docFacturaRef = doc(db, 'ventas', idFacturaDoc);
+            
+            // Verificamos si existe para los contadores de la alerta (lectura pesada, optimizable en el futuro)
             const snapFactura = await getDoc(docFacturaRef);
 
             const ventaDataObj = {
@@ -263,16 +288,14 @@ export default function FacturasPage() {
               orden_referencia: ordenId,
               estado: 'EMITIDA',
               origen: 'CARGA_MASIVA_ECOMMERCE',
-              fecha_cobro: new Date().toISOString(),
-              fecha: serverTimestamp(),
-              items: [
-                {
-                  nombre: productoNombre,
-                  cantidad: cantidadNum,
-                  precio: precioUnitario,
-                  tarifaIva: ivaPct
-                }
-              ]
+              fecha_cobro: fechaActualISO,
+              fecha: fechaActualISO,
+              items: [{
+                nombre: productoNombre,
+                cantidad: cantidadNum,
+                precio: precioUnitario,
+                tarifaIva: ivaPct
+              }]
             };
 
             if (snapFactura.exists()) {
@@ -281,10 +304,18 @@ export default function FacturasPage() {
               creadosCount++;
             }
 
-            // GUARDA O ACTUALIZA SEGÚN EL ORDEN_ID RECIBIDO
-            await setDoc(docFacturaRef, ventaDataObj, { merge: true });
+            // GUARDA EN BATCH (Venta)
+            batchArray[batchIndex].set(docFacturaRef, ventaDataObj, { merge: true });
+            opCount++;
 
-            // REGISTRO Y SINCRO DE CLIENTE ASOCIADO
+            // Mantenimiento del Batch (Límite 500 ops)
+            if (opCount >= 450) {
+              batchArray.push(writeBatch(db));
+              batchIndex++;
+              opCount = 0;
+            }
+
+            // REGISTRO DE CLIENTE
             const idClienteRef = nit !== '222222222222' && nit !== 'CF_GENERAL'
               ? `CLI_${nit}`
               : `CLI_${Date.now().toString().slice(-6)}_${i}`;
@@ -302,14 +333,28 @@ export default function FacturasPage() {
               direccion: direccion,
               ciudad: ciudad,
               estado: 'ACTIVO',
-              fecha_actualizacion: new Date().toISOString()
+              fecha_actualizacion: fechaActualISO
             };
 
-            await setDoc(doc(db, 'clientes', idClienteRef), cliObj, { merge: true });
+            // GUARDA EN BATCH (Cliente)
+            const docClienteRef = doc(db, 'clientes', idClienteRef);
+            batchArray[batchIndex].set(docClienteRef, cliObj, { merge: true });
+            opCount++;
+
+            if (opCount >= 450) {
+              batchArray.push(writeBatch(db));
+              batchIndex++;
+              opCount = 0;
+            }
           }
         }
 
-        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Facturas Nuevas Creadas: ${creadosCount}\n🔄 Facturas Existentes Actualizadas (por ORDEN_ID): ${actualizadosCount}`);
+        // Ejecutar todas las transacciones bloqueadas
+        for (const b of batchArray) {
+          await b.commit();
+        }
+
+        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Facturas Nuevas Creadas: ${creadosCount}\n🔄 Facturas Existentes Actualizadas: ${actualizadosCount}`);
         setShowModalEcommerce(false);
         setArchivoCSV(null);
       } catch (err: any) {
@@ -324,15 +369,15 @@ export default function FacturasPage() {
 
   // EXPORTAR CONSOLIDADO MASIVO COMPATIBLE CON SOFTWARE CONTABLE Y DIAN
   const handleExportarReporteFiscal = () => {
-    if (facturasFiltradas.length === 0) {
-      return alert('No hay comprobantes registrados para exportar.');
+    if (facturasParaExportar.length === 0) {
+      return alert('No hay comprobantes registrados en los filtros actuales para exportar.');
     }
 
     const bom = '\uFEFF';
     let csvContent = 'SEP=;\n';
     csvContent += 'NUM_COMPROBANTE;ORDEN_REF;FECHA_EMISION;TIPO_DOC;NIT_RUT;CLIENTE_NOMBRE;CORREO_CLIENTE;TELEFONO;DIRECCION;CIUDAD;RESPONSABILIDAD_FISCAL;PRODUCTO;CANTIDAD;PRECIO_UNITARIO;METODO_PAGO;CANAL_ORIGEN;SUBTOTAL;IVA_MONTO;TOTAL_CON_IMPUESTO;ESTADO_FISCAL\n';
 
-    facturasFiltradas.forEach(f => {
+    facturasParaExportar.forEach(f => {
       const fNum = f.id_factura || 'N/A';
       const fOrden = f.orden_referencia || 'N/A';
       const fFecha = f.fecha_cobro || f.fecha ? new Date(f.fecha_cobro || f.fecha).toISOString() : 'N/A';
@@ -524,6 +569,12 @@ export default function FacturasPage() {
               Emitidas
             </button>
             <button 
+              onClick={() => setFiltroEstado('PENDIENTE')} 
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'PENDIENTE' ? 'bg-amber-500 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Pendientes
+            </button>
+            <button 
               onClick={() => setFiltroEstado('ANULADA')} 
               className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'ANULADA' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}
             >
@@ -579,7 +630,7 @@ export default function FacturasPage() {
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-satoshi-black ${
                       isAnulada 
                         ? 'bg-red-950/80 text-red-400 border border-red-800/40' 
-                        : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40'
+                        : (f.estado === 'PENDIENTE' ? 'bg-amber-900/80 text-amber-400 border border-amber-800/40' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40')
                     }`}>
                       {f.estado || 'EMITIDA'}
                     </span>

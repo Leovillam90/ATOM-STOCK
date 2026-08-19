@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -18,7 +18,6 @@ export default function VendedoresPage() {
   const [nombre, setNombre] = useState('');
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
-  // SE AGREGÓ 'CONTABLE' A LOS TIPOS PERMITIDOS
   const [rol, setRol] = useState<'ADMIN' | 'GERENTE_BODEGA' | 'VENDEDOR' | 'CONTABLE'>('VENDEDOR');
   
   // ASIGNACIÓN DE MÚLTIPLES SEDES
@@ -33,19 +32,21 @@ export default function VendedoresPage() {
     }
   }, []);
 
-  // Escuchar Firestore en Tiempo Real
+  // Escuchar Firestore en Tiempo Real (Con manejo de errores)
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
     const qUsers = query(collection(db, 'usuarios'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubUsers = onSnapshot(qUsers, (snap) => {
-      setUsuarios(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    const unsubUsers = onSnapshot(qUsers, 
+      (snap) => setUsuarios(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))),
+      (err) => console.error("Error cargando usuarios:", err)
+    );
 
     const qSuc = query(collection(db, 'sucursales'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsubSuc = onSnapshot(qSuc, (snap) => {
-      setSucursales(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    const unsubSuc = onSnapshot(qSuc, 
+      (snap) => setSucursales(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))),
+      (err) => console.error("Error cargando sucursales:", err)
+    );
 
     return () => {
       unsubUsers();
@@ -53,6 +54,9 @@ export default function VendedoresPage() {
     };
   }, [userAuth]);
 
+  // ==========================================
+  // FUNCIONES DE INTERFAZ Y FORMULARIO
+  // ==========================================
   const handleToggleSede = (idSucursal: string) => {
     setSedesAsignadas(prev => {
       if (prev.includes(idSucursal)) {
@@ -108,12 +112,16 @@ export default function VendedoresPage() {
     setShowModal(true);
   };
 
+  // ==========================================
+  // CRUD A BASE DE DATOS
+  // ==========================================
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Sanitización y Validación
     if (!nombre.trim() || !user.trim() || !pass.trim()) {
       return alert('Por favor ingresa Nombre, Usuario/Correo y Contraseña.');
     }
-
     if (sedesAsignadas.length === 0) {
       return alert('Debes seleccionar al menos una sede asignada para el usuario.');
     }
@@ -131,7 +139,7 @@ export default function VendedoresPage() {
         email: userClean,
         pass: pass.trim(),
         rol: rol,
-        id_sucursal: sedesAsignadas[0] || '',
+        id_sucursal: sedesAsignadas[0] || '', // Se mantiene por compatibilidad hacia atrás
         sedes_asignadas: sedesAsignadas,
         fecha_actualizacion: new Date().toISOString()
       };
@@ -160,23 +168,34 @@ export default function VendedoresPage() {
     }
   };
 
-  // FILTRADO DE USUARIOS: EXCLUYE AL ADMINISTRADOR PRINCIPAL (ROL: ADMIN)
-  const usuariosFiltrados = usuarios.filter(u => {
-    // Excluir al Administrador Principal para no mostrarlo en la lista de equipo/vendedores
-    if (u.rol === 'ADMIN') return false;
-
+  // ==========================================
+  // 🧠 RENDIMIENTO: CÁLCULOS MEMOIZADOS
+  // ==========================================
+  const { usuariosFiltrados, totalEquipoCount, vendedoresCount, gerentesCount } = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    return String(u.nombre || '').toLowerCase().includes(q) ||
-           String(u.user || u.email || '').toLowerCase().includes(q) ||
-           String(u.rol || '').toLowerCase().includes(q);
-  });
+    
+    // Filtro de búsqueda (Excluyendo ADMIN)
+    const filtrados = usuarios.filter(u => {
+      if (u.rol === 'ADMIN') return false;
+      return String(u.nombre || '').toLowerCase().includes(q) ||
+             String(u.user || u.email || '').toLowerCase().includes(q) ||
+             String(u.rol || '').toLowerCase().includes(q);
+    });
 
-  // Conteos de equipo (Excluyendo al Admin)
-  const soloEquipo = usuarios.filter(u => u.rol !== 'ADMIN');
-  const totalEquipoCount = soloEquipo.length;
-  const vendedoresCount = soloEquipo.filter(u => u.rol === 'VENDEDOR').length;
-  const gerentesCount = soloEquipo.filter(u => u.rol === 'GERENTE_BODEGA').length;
+    // Contadores Generales
+    const equipo = usuarios.filter(u => u.rol !== 'ADMIN');
+    return {
+      usuariosFiltrados: filtrados,
+      totalEquipoCount: equipo.length,
+      vendedoresCount: equipo.filter(u => u.rol === 'VENDEDOR').length,
+      gerentesCount: equipo.filter(u => u.rol === 'GERENTE_BODEGA').length,
+    };
+  }, [usuarios, searchQuery]);
 
+
+  // ==========================================
+  // RENDERIZADO UI
+  // ==========================================
   return (
     <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">
       
@@ -327,7 +346,6 @@ export default function VendedoresPage() {
                   </td>
 
                   <td className="p-4">
-                    {/* AQUÍ SE AGREGÓ EL COLOR AZUL PARA EL ROL CONTABLE */}
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-satoshi-black ${
                       u.rol === 'GERENTE_BODEGA' ? 'bg-amber-950/80 text-amber-300 border border-amber-800/40' : 
                       u.rol === 'CONTABLE' ? 'bg-blue-950/80 text-blue-300 border border-blue-800/40' :
@@ -446,7 +464,6 @@ export default function VendedoresPage() {
                 />
               </div>
 
-              {/* AQUÍ SE AGREGÓ EL ROL CONTABLE AL DESPLEGABLE */}
               <div>
                 <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-1">
                   Rol y Nivel de Permisos

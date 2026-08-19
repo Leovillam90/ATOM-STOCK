@@ -1,8 +1,36 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+
+// 🧠 ARQUITECTURA: Constante movida fuera del componente para evitar re-renders innecesarios
+const canalesNativos = [
+  {
+    id_canal: 'DROPI',
+    nombre: 'Dropi',
+    tipo: 'DROPI',
+    descripcion: 'Sincronización mediante OAuth de ATOM. Permite el intercambio de guías, pedidos e inventario en tiempo real.',
+    colorBadge: '#0DE8C0',
+    requiereLoginAtom: true
+  },
+  {
+    id_canal: 'VENDELO',
+    nombre: 'Vendelo',
+    tipo: 'VENDELO',
+    descripcion: 'Conexión mediante API Key para orquestación de envíos contraentrega, novedades y recaudos.',
+    colorBadge: '#C81FDA',
+    requiereLoginAtom: false
+  },
+  {
+    id_canal: 'MASTER',
+    nombre: 'Master',
+    tipo: 'MASTER',
+    descripcion: 'Cuenta principal de consolidación para delegación de stock multibodega y facturación centralizada.',
+    colorBadge: '#6884C5',
+    requiereLoginAtom: false
+  }
+];
 
 export default function IntegracionesPage() {
   const [userAuth, setUserAuth] = useState<any>(null);
@@ -26,56 +54,38 @@ export default function IntegracionesPage() {
     }
   }, []);
 
-  // Escuchar 'integraciones' en Firestore
+  // Escuchar 'integraciones' en Firestore con manejo de errores
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
     const q = query(collection(db, 'integraciones'), where('id_cuenta', '==', userAuth.id_cuenta));
-    const unsub = onSnapshot(q, (snap) => {
-      setCuentasVentas(snap.docs.map(d => ({ ...d.data(), id_doc: d.id })));
-    });
+    const unsub = onSnapshot(q, 
+      (snap) => setCuentasVentas(snap.docs.map(d => ({ ...d.data(), id_doc: d.id }))),
+      (err) => console.error("Error cargando integraciones:", err)
+    );
 
     return () => unsub();
   }, [userAuth]);
 
-  // Integraciones Nativas de Cuentas de Ventas
-  const canalesNativos = [
-    {
-      id_canal: 'DROPI',
-      nombre: 'Dropi',
-      tipo: 'DROPI',
-      descripcion: 'Sincronización mediante OAuth de ATOM. Permite el intercambio de guías, pedidos e inventario en tiempo real.',
-      colorBadge: '#0DE8C0',
-      requiereLoginAtom: true
-    },
-    {
-      id_canal: 'VENDELO',
-      nombre: 'Vendelo',
-      tipo: 'VENDELO',
-      descripcion: 'Conexión mediante API Key para orquestación de envíos contraentrega, novedades y recaudos.',
-      colorBadge: '#C81FDA',
-      requiereLoginAtom: false
-    },
-    {
-      id_canal: 'MASTER',
-      nombre: 'Master',
-      tipo: 'MASTER',
-      descripcion: 'Cuenta principal de consolidación para delegación de stock multibodega y facturación centralizada.',
-      colorBadge: '#6884C5',
-      requiereLoginAtom: false
-    }
-  ];
+  // 🧠 RENDIMIENTO: Filtrado real mediante useMemo para la barra de búsqueda
+  const canalesFiltrados = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return canalesNativos.filter(canal => {
+      const matchSearch = canal.nombre.toLowerCase().includes(q) || canal.tipo.toLowerCase().includes(q);
+      const matchFiltro = filtroPlataforma === 'TODAS' || canal.tipo === filtroPlataforma;
+      return matchSearch && matchFiltro;
+    });
+  }, [searchQuery, filtroPlataforma]);
 
   // Acción al presionar Vincular o Configurar
   const handleVincularCanal = (canal: any) => {
     if (canal.requiereLoginAtom) {
-      // 1. Lógica especial para DROPI: Redireccionar al login de ATOM con parámetros de retorno y Handshake OAuth
+      // 1. Lógica especial para DROPI: Redireccionar al login de ATOM
       const idCuenta = userAuth?.id_cuenta || 'DEMO';
       const redirectUri = window.location.href;
       
       const atomLoginUrl = `https://atomapp.com.co/login?grant_type=authorization_code&client_id=DROPI&account_id=${encodeURIComponent(idCuenta)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read_write_inventory_orders`;
       
-      // Redirigir al login oficial de ATOM para autorizar la entrega de datos a DROPI
       window.location.href = atomLoginUrl;
     } else {
       // 2. Lógica para Vendelo y Master: Abrir Modal de Credenciales API
@@ -233,7 +243,7 @@ export default function IntegracionesPage() {
 
       </div>
 
-      {/* BARRA DE BÚSQUEDA LIMPIA */}
+      {/* BARRA DE BÚSQUEDA Y FILTRO */}
       <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-3 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="relative w-full md:w-80">
           <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -265,7 +275,7 @@ export default function IntegracionesPage() {
 
       {/* GRID DE CUENTAS DE VENTAS NATIVAS (3 COLUMNAS) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {canalesNativos.map((canal, idx) => {
+        {canalesFiltrados.map((canal, idx) => {
           const cuentaInfo = cuentasVentas.find(i => i.id_canal === canal.id_canal);
           const isConectado = cuentaInfo?.estado === 'CONECTADO';
 
@@ -329,6 +339,12 @@ export default function IntegracionesPage() {
             </div>
           );
         })}
+
+        {canalesFiltrados.length === 0 && (
+          <div className="col-span-full text-center py-12 text-slate-400 text-xs">
+            No se encontraron integraciones con ese nombre.
+          </div>
+        )}
       </div>
 
       {/* MODAL CONFIGURACIÓN DE CUENTA DE VENTAS (PARA VENDELO Y MASTER) */}
