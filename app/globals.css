@@ -15,3 +15,15 @@ body {
   -webkit-font-smoothing: antialiased; /* Mejora la legibilidad de las fuentes en Mac/iOS */
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ========================================================= */
+/* CORRECCIÓN PARA EL AUTOCOMPLETADO BLANCO DE LOS NAVEGADORES */
+/* ========================================================= */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+    -webkit-text-fill-color: white !important; /* Mantiene el texto blanco */
+    transition: background-color 5000s ease-in-out 0s; /* Evita que el fondo se ponga blanco u oscuro nativo */
+    caret-color: white; /* Mantiene el cursor (la barrita que titila) en blanco */
+}
