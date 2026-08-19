@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, writeBatch } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { updatePassword } from 'firebase/auth';
+import { db, auth } from '@/lib/firebase'; // <-- Importamos auth de Firebase
 import '@/app/globals.css';
 
 export default function PerfilPage() {
@@ -177,7 +178,7 @@ export default function PerfilPage() {
   };
 
   // ==========================================
-  // 🛡️ GUARDADO CON BATCH (TODO O NADA)
+  // 🛡️ GUARDADO CON BATCH Y FIREBASE AUTH
   // ==========================================
   const handleGuardarCambios = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,8 +186,11 @@ export default function PerfilPage() {
     if (!prefijoPais) return alert("Por favor selecciona el indicativo de tu país en la pestaña Perfil.");
     if (!telefono.trim()) return alert("Por favor ingresa tu número de teléfono.");
     if (!hayCambios()) return;
-    if (passNueva && passNueva !== passConfirm) {
-      return alert('Las nuevas contraseñas no coinciden.');
+    
+    // VALIDACIÓN DE CONTRASEÑAS PARA FIREBASE AUTH
+    if (passNueva.trim()) {
+      if (passNueva.trim().length < 6) return alert('La nueva contraseña debe tener al menos 6 caracteres.');
+      if (passNueva !== passConfirm) return alert('Las nuevas contraseñas no coinciden.');
     }
 
     setIsSaving(true);
@@ -195,7 +199,16 @@ export default function PerfilPage() {
       const batch = writeBatch(db);
       const fechaActualizacion = new Date().toISOString();
 
-      // 1. Actualizar usuario
+      // 1. ACTUALIZAR CONTRASEÑA EN FIREBASE AUTH
+      if (passNueva.trim()) {
+        if (!auth.currentUser) {
+          setIsSaving(false);
+          return alert('No hay una sesión activa de seguridad. Por favor, cierra sesión y vuelve a entrar para cambiar tu contraseña.');
+        }
+        await updatePassword(auth.currentUser, passNueva.trim());
+      }
+
+      // 2. Actualizar usuario en Firestore (YA NO GUARDAMOS LA CONTRASEÑA)
       if (userAuth?.id_usuario) {
         const userUpdate: any = {
           nombre: nombre.trim(),
@@ -203,14 +216,12 @@ export default function PerfilPage() {
           indicativo_pais: prefijoPais,
           fecha_actualizacion: fechaActualizacion
         };
-        if (passNueva.trim()) {
-          userUpdate.pass = passNueva.trim();
-        }
+        
         const userRef = doc(db, 'usuarios', userAuth.id_usuario);
         batch.set(userRef, userUpdate, { merge: true });
       }
 
-      // 2. Guardar datos legales y actualizar cuenta
+      // 3. Guardar datos legales y actualizar cuenta
       if (userAuth?.id_cuenta) {
         const facturaElectronicaData = {
           id_cuenta: userAuth.id_cuenta,
@@ -238,7 +249,7 @@ export default function PerfilPage() {
         }
       }
 
-      await batch.commit(); // Ejecuta las 3 escrituras al mismo tiempo
+      await batch.commit(); // Ejecuta las 3 escrituras al mismo tiempo en Firestore
 
       const sessionObj = {
         ...userAuth,
@@ -250,7 +261,7 @@ export default function PerfilPage() {
       localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
       setUserAuth(sessionObj);
 
-      alert('¡Configuración guardada correctamente!');
+      alert('¡Configuración y credenciales guardadas correctamente!');
       setPassActual('');
       setPassNueva('');
       setPassConfirm('');
@@ -272,7 +283,11 @@ export default function PerfilPage() {
       });
     } catch (err: any) {
       console.error(err);
-      alert('Error guardando cambios: ' + err.message);
+      if (err.code === 'auth/requires-recent-login') {
+        alert('Por seguridad, Firebase requiere que inicies sesión nuevamente para cambiar tu contraseña. Cierra sesión y vuelve a entrar.');
+      } else {
+        alert('Error guardando cambios: ' + err.message);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -375,7 +390,7 @@ export default function PerfilPage() {
                       disabled
                     />
                     <svg className="w-3.5 h-3.5 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2-2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
                 </div>
@@ -425,15 +440,6 @@ export default function PerfilPage() {
 
                   {showSeguridad && (
                     <div className="mt-3 p-3 bg-[#1D2935] rounded-lg border border-slate-700/80 space-y-3 animate-in slide-in-from-top-2">
-                      <div>
-                        <label className="block text-[10px] font-satoshi-black text-slate-300 uppercase mb-0.5">Contraseña Actual</label>
-                        <input
-                          type="password"
-                          className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-md p-2 text-xs text-white focus:outline-none font-satoshi-regular"
-                          value={passActual}
-                          onChange={(e) => setPassActual(e.target.value)}
-                        />
-                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <div>
                           <label className="block text-[10px] font-satoshi-black text-slate-300 uppercase mb-0.5">Nueva Contraseña</label>

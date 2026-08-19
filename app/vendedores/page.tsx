@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+// 🛡️ IMPORTACIONES NUEVAS PARA FIREBASE AUTH Y LA APP SECUNDARIA
+import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { initializeApp, getApps } from 'firebase/app';
+import app, { db } from '@/lib/firebase'; // Asegúrate de que 'app' se exporta por defecto en lib/firebase.ts
 
 export default function VendedoresPage() {
   const [userAuth, setUserAuth] = useState<any>(null);
@@ -32,7 +35,7 @@ export default function VendedoresPage() {
     }
   }, []);
 
-  // Escuchar Firestore en Tiempo Real (Con manejo de errores)
+  // Escuchar Firestore en Tiempo Real
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
@@ -97,10 +100,10 @@ export default function VendedoresPage() {
     setEditingId(u.id_doc || u.id_usuario);
     setNombre(u.nombre || '');
     setUser(u.user || '');
-    setPass(u.pass || u.PASS || '');
+    setPass(''); // Limpiamos el campo por seguridad
     setRol(u.rol || 'VENDEDOR');
 
-    // Cargar arreglo de sedes asignadas o fallback si solo tenía una
+    // Cargar arreglo de sedes asignadas
     if (Array.isArray(u.sedes_asignadas) && u.sedes_asignadas.length > 0) {
       setSedesAsignadas(u.sedes_asignadas);
     } else if (u.id_sucursal) {
@@ -113,14 +116,23 @@ export default function VendedoresPage() {
   };
 
   // ==========================================
-  // CRUD A BASE DE DATOS
+  // 🛡️ CRUD CON FIREBASE AUTH SECUNDARIO
   // ==========================================
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Sanitización y Validación
-    if (!nombre.trim() || !user.trim() || !pass.trim()) {
-      return alert('Por favor ingresa Nombre, Usuario/Correo y Contraseña.');
+    // Validaciones
+    if (!nombre.trim() || !user.trim()) {
+      return alert('Por favor ingresa Nombre y Usuario/Correo.');
+    }
+    if (!user.includes('@')) {
+      return alert('Firebase Auth requiere que el usuario sea un correo válido (ej: cajero@empresa.com).');
+    }
+    if (!editingId && !pass.trim()) {
+      return alert('La contraseña es obligatoria para crear un usuario nuevo.');
+    }
+    if (!editingId && pass.length < 6) {
+      return alert('La contraseña debe tener al menos 6 caracteres.');
     }
     if (sedesAsignadas.length === 0) {
       return alert('Debes seleccionar al menos una sede asignada para el usuario.');
@@ -129,34 +141,56 @@ export default function VendedoresPage() {
     setLoading(true);
     try {
       const userClean = user.trim().toLowerCase();
-      const docId = editingId || `USER_${Date.now().toString().slice(-6)}`;
+      let uidFinal = editingId;
 
+      // 1. SI ES UN USUARIO NUEVO, CREARLO EN FIREBASE AUTH
+      if (!editingId) {
+        // Inicializar o recuperar la App Secundaria para no cerrar la sesión del Admin
+        const apps = getApps();
+        let secondaryApp = apps.find(a => a.name === 'SecondaryApp');
+        if (!secondaryApp) {
+          secondaryApp = initializeApp(app.options, 'SecondaryApp');
+        }
+        const secondaryAuth = getAuth(secondaryApp);
+
+        // Crear usuario en la bóveda
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, userClean, pass.trim());
+        uidFinal = cred.user.uid; // Obtenemos el ID Seguro generado
+
+        // Deslogueamos la app secundaria inmediatamente
+        await signOut(secondaryAuth);
+      }
+
+      // 2. GUARDAR DATOS PÚBLICOS EN FIRESTORE (SIN LA CONTRASEÑA)
       const userData = {
         id_cuenta: userAuth.id_cuenta,
-        id_usuario: docId,
+        id_usuario: uidFinal,
         nombre: nombre.trim(),
         user: userClean,
         email: userClean,
-        pass: pass.trim(),
         rol: rol,
-        id_sucursal: sedesAsignadas[0] || '', // Se mantiene por compatibilidad hacia atrás
+        id_sucursal: sedesAsignadas[0] || '', // Por compatibilidad
         sedes_asignadas: sedesAsignadas,
         fecha_actualizacion: new Date().toISOString()
       };
 
-      await setDoc(doc(db, 'usuarios', docId), userData, { merge: true });
+      await setDoc(doc(db, 'usuarios', uidFinal as string), userData, { merge: true });
       setShowModal(false);
-      alert(editingId ? '¡Usuario y sedes actualizados con éxito!' : '¡Usuario creado exitosamente!');
+      alert(editingId ? '¡Usuario y sedes actualizados con éxito!' : '¡Usuario creado exitosamente de forma segura!');
     } catch (err: any) {
       console.error(err);
-      alert('Error al guardar el usuario: ' + err.message);
+      if (err.code === 'auth/email-already-in-use') {
+        alert('Este correo ya está registrado en Firebase Auth. Utiliza otro.');
+      } else {
+        alert('Error al guardar el usuario: ' + err.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (u: any) => {
-    if (!confirm(`¿Estás seguro de eliminar el acceso para ${u.nombre}?`)) return;
+    if (!confirm(`¿Estás seguro de eliminar el acceso para ${u.nombre}? (Nota: Su cuenta en Auth seguirá existiendo pero no podrá ingresar al sistema).`)) return;
 
     try {
       const docId = u.id_doc || u.id_usuario;
@@ -441,28 +475,34 @@ export default function VendedoresPage() {
                   Usuario / Correo de Acceso *
                 </label>
                 <input
-                  type="text"
-                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3 text-xs text-white focus:outline-none font-mono"
-                  placeholder="carlos@atomstock.com"
+                  type="email"
+                  className={`w-full bg-[#1D2935] border border-slate-700 rounded-xl p-3 text-xs text-white focus:outline-none font-mono ${editingId ? 'opacity-60 cursor-not-allowed' : 'focus:border-[#0DE8C0]'}`}
+                  placeholder="cajero@atomstock.com"
                   value={user}
                   onChange={(e) => setUser(e.target.value)}
+                  disabled={!!editingId} // No dejamos cambiar el correo si ya existe por seguridad en Auth
                   required
                 />
+                {editingId && <span className="text-[10px] text-slate-500 mt-1 block">El correo no se puede modificar.</span>}
               </div>
 
-              <div>
-                <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-1">
-                  Contraseña *
-                </label>
-                <input
-                  type="text"
-                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3 text-xs text-white focus:outline-none font-mono"
-                  placeholder="••••••••••••"
-                  value={pass}
-                  onChange={(e) => setPass(e.target.value)}
-                  required
-                />
-              </div>
+              {/* 🛡️ SOLO MOSTRAMOS LA CONTRASEÑA SI ESTAMOS CREANDO UN USUARIO NUEVO */}
+              {!editingId && (
+                <div>
+                  <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-1">
+                    Contraseña *
+                  </label>
+                  <input
+                    type="password"
+                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl p-3 text-xs text-white focus:outline-none font-mono"
+                    placeholder="••••••••••••"
+                    value={pass}
+                    onChange={(e) => setPass(e.target.value)}
+                    required={!editingId}
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Debe tener al menos 6 caracteres.</span>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-1">
@@ -545,7 +585,7 @@ export default function VendedoresPage() {
                   disabled={loading}
                   className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg transition"
                 >
-                  {loading ? 'Guardando...' : (editingId ? 'Guardar Cambios' : 'Añadir Usuario')}
+                  {loading ? 'Guardando...' : (editingId ? 'Guardar Cambios' : 'Crear Usuario')}
                 </button>
               </div>
             </form>

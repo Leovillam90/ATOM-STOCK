@@ -4,7 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { collection, query, where, getDocs, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+// IMPORTAMOS LA BÓVEDA DE AUTENTICACIÓN
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { db, auth } from '@/lib/firebase'; // <-- Asegúrate de importar 'auth'
 import '@/app/globals.css';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -17,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [userAuth, setUserAuth] = useState<any>(null);
   const [loadingSession, setLoadingSession] = useState(true);
 
-  // Estados de Conteo (⚠️ Deuda de escalamiento: Optimizar a getCountFromServer a futuro)
+  // Estados de Conteo
   const [numSucursales, setNumSucursales] = useState<number | null>(null);
   const [numVendedores, setNumVendedores] = useState<number | null>(null);
   const [numProductos, setNumProductos] = useState<number | null>(null);
@@ -114,26 +116,32 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }, []);
 
   // ==========================================
-  // LÓGICA DE AUTENTICACIÓN
+  // LÓGICA DE AUTENTICACIÓN (CON FIREBASE AUTH) 🛡️
   // ==========================================
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userField || !passField) return alert('Ingresa tu correo / usuario y contraseña.');
+    if (!userField.includes('@')) return alert('Firebase Auth requiere que el usuario sea un correo electrónico válido (ej: admin@empresa.com).');
 
     setLoadingAction(true);
     const term = userField.trim().toLowerCase();
 
     try {
       if (isRegister) {
-        // REGISTRO DE EMPRESA
+        // ----------------------------------------------------
+        // 1. REGISTRO DE EMPRESA Y ADMIN (CON FIREBASE AUTH)
+        // ----------------------------------------------------
         if (!nombreField.trim() || !telefonoField.trim()) {
           setLoadingAction(false);
           return alert('Por favor ingresa el nombre de la empresa y tu número de celular.');
         }
 
+        // Creamos la bóveda de seguridad primero
+        const userCredential = await createUserWithEmailAndPassword(auth, term, passField.trim());
+        const idUsuarioAuth = userCredential.user.uid; // ID Encriptado y seguro generado por Firebase
+
         const numLimpio = obtenerNumeroPuro(telefonoField);
         const idCuenta = `CTA_${Date.now().toString().slice(-8)}`;
-        const idUsuario = `USR_${Date.now().toString().slice(-8)}`;
 
         await setDoc(doc(db, 'cuentas', idCuenta), {
           id_cuenta: idCuenta,
@@ -146,66 +154,59 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           estado: 'ACTIVO'
         });
 
+        // Creamos el perfil, pero YA NO GUARDAMOS LA CONTRASEÑA
         const usuarioAdminObj = {
           id_cuenta: idCuenta,
-          id_usuario: idUsuario,
+          id_usuario: idUsuarioAuth,
           id_sucursal: '',
           nombre: nombreField.trim(),
           telefono: numLimpio,
           indicativo_pais: indicativoField,
           user: term,
           email: term,
-          pass: passField.trim(),
           rol: 'ADMIN',
           estado: 'ACTIVO',
           sedes_asignadas: [],
           fecha_creacion: new Date().toISOString()
         };
 
-        await setDoc(doc(db, 'usuarios', idUsuario), usuarioAdminObj);
+        await setDoc(doc(db, 'usuarios', idUsuarioAuth), usuarioAdminObj);
 
         const sessionObj = {
-          id_usuario: idUsuario,
-          nombre: nombreField.trim(),
-          telefono: numLimpio,
-          indicativo_pais: indicativoField,
-          rol: 'ADMIN',
-          user: term,
-          id_cuenta: idCuenta,
-          empresa: nombreField.trim(),
-          id_sucursal: '',
-          sedes_asignadas: []
+          ...usuarioAdminObj,
+          empresa: nombreField.trim()
         };
 
         setUserAuth(sessionObj);
         localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
-        alert('¡Empresa registrada con éxito!');
+        alert('¡Empresa registrada con éxito de forma segura!');
         router.push('/reportes');
 
       } else {
-        // INICIO DE SESIÓN
-        const qMin = query(collection(db, 'usuarios'), where('user', '==', term));
-        let snap = await getDocs(qMin);
+        // ----------------------------------------------------
+        // 2. INICIO DE SESIÓN (CON FIREBASE AUTH)
+        // ----------------------------------------------------
+        // Intentamos abrir la bóveda de Firebase
+        await signInWithEmailAndPassword(auth, term, passField.trim());
+
+        // Si pasó la línea anterior, la contraseña es correcta y Firebase nos dejó entrar.
+        // Ahora buscamos qué rol y a qué empresa pertenece este usuario.
+        const qEmail = query(collection(db, 'usuarios'), where('email', '==', term));
+        let snap = await getDocs(qEmail);
 
         if (snap.empty) {
-          const qEmail = query(collection(db, 'usuarios'), where('email', '==', term));
-          snap = await getDocs(qEmail);
+          const qUser = query(collection(db, 'usuarios'), where('user', '==', term));
+          snap = await getDocs(qUser);
         }
 
         if (snap.empty) {
-          alert('Usuario no encontrado. Haz clic en "Crear cuenta" para registrar tu empresa.');
+          alert('Tu cuenta está autenticada, pero no encontramos tu perfil en la base de datos.');
           setLoadingAction(false);
           return;
         }
 
         const userDoc = snap.docs[0];
         const userData = userDoc.data();
-
-        if ((userData.pass || userData.PASS) !== passField.trim()) {
-          alert('Contraseña incorrecta.');
-          setLoadingAction(false);
-          return;
-        }
 
         const idCuenta = userData.id_cuenta || userData.ID_CUENTA;
         let empresaNom = 'ATOM STOCK';
@@ -250,7 +251,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        alert('Error de conexión: ' + err.message);
+        // Convertimos los errores técnicos de Firebase en mensajes amigables
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+          alert('Credenciales incorrectas. Verifica tu correo y contraseña.');
+        } else if (err.code === 'auth/email-already-in-use') {
+          alert('Este correo ya está registrado en el sistema. Intenta iniciar sesión.');
+        } else {
+          alert('Error de conexión o credenciales inválidas: ' + err.message);
+        }
         console.error(err);
       }
     } finally {
@@ -258,7 +266,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth); // Destruye el token de seguridad
+    } catch (error) {
+      console.error("Error cerrando sesión en Firebase:", error);
+    }
     setUserAuth(null);
     localStorage.removeItem('atom_user_session');
     router.push('/');
