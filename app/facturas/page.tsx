@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function FacturasPage() {
@@ -111,7 +111,7 @@ export default function FacturasPage() {
     return true;
   });
 
-  // ORDENAMIENTO POR FECHA (NUEVAS PRIMERO O MÁS ANTIGUAS PRIMERO)
+  // ORDENAMIENTO POR FECHA
   const facturasOrdenadas = [...facturasFiltradas].sort((a, b) => {
     const fechaA = new Date(a.fecha_cobro || a.fecha || 0).getTime();
     const fechaB = new Date(b.fecha_cobro || b.fecha || 0).getTime();
@@ -155,7 +155,7 @@ export default function FacturasPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR Y CARGAR ARCHIVO CSV MASIVO CON VALIDACIÓN ESTRICTA DE ENCABEZADOS Y SEGURIDAD
+  // PROCESAR Y CARGAR ARCHIVO CSV MASIVO E INDEXAR CLIENTES AUTOMÁTICAMENTE
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!archivoCSV) return alert('Selecciona un archivo CSV para procesar.');
@@ -189,7 +189,6 @@ export default function FacturasPage() {
           return;
         }
 
-        // Obtener índices dinámicos de las columnas
         const idxOrdenId = headers.indexOf('orden_id');
         const idxCanal = headers.indexOf('canal');
         const idxTipoDoc = headers.indexOf('tipo_documento');
@@ -214,12 +213,12 @@ export default function FacturasPage() {
             const ordenId = (idxOrdenId !== -1 && columnas[idxOrdenId]) ? columnas[idxOrdenId] : `ORD-${Date.now().toString().slice(-4)}`;
             const canal = (idxCanal !== -1 && columnas[idxCanal]) ? columnas[idxCanal] : canalPlataforma;
             const tipoDoc = (idxTipoDoc !== -1 && columnas[idxTipoDoc]) ? columnas[idxTipoDoc] : '13';
-            const nit = (idxNit !== -1 && columnas[idxNit]) ? columnas[idxNit] : '222222222222';
+            const nit = (idxNit !== -1 && columnas[idxNit]) ? columnas[idxNit].trim() : '222222222222';
             const cliente = columnas[idxCliente] || 'Consumidor Final';
-            const correo = (idxCorreo !== -1 && columnas[idxCorreo]) ? columnas[idxCorreo] : 'facturacion@ecom.com';
-            const telefono = (idxTel !== -1 && columnas[idxTel]) ? columnas[idxTel] : 'N/A';
-            const direccion = (idxDir !== -1 && columnas[idxDir]) ? columnas[idxDir] : 'Ciudad Principal';
-            const ciudad = (idxCiu !== -1 && columnas[idxCiu]) ? columnas[idxCiu] : 'Cali';
+            const correo = (idxCorreo !== -1 && columnas[idxCorreo]) ? columnas[idxCorreo].toLowerCase().trim() : 'facturacion@ecom.com';
+            const telefono = (idxTel !== -1 && columnas[idxTel]) ? columnas[idxTel].trim() : 'N/A';
+            const direccion = (idxDir !== -1 && columnas[idxDir]) ? columnas[idxDir].trim() : 'Ciudad Principal';
+            const ciudad = (idxCiu !== -1 && columnas[idxCiu]) ? columnas[idxCiu].trim() : 'Cali';
             const respFiscal = (idxResp !== -1 && columnas[idxResp]) ? columnas[idxResp] : 'R-99-PN';
 
             const productoNombre = (idxProd !== -1 && columnas[idxProd]) ? columnas[idxProd] : 'Producto E-Commerce';
@@ -234,6 +233,7 @@ export default function FacturasPage() {
 
             const idFacturaGen = `FE-${canal.toUpperCase().slice(0,3)}-${Math.floor(100000 + Math.random() * 900000)}`;
 
+            // 1. REGISTRAR LA FACTURA EN LA COLECCIÓN DE VENTAS
             const nuevaFactura = {
               id_cuenta: userAuth?.id_cuenta || 'DEMO_123',
               id_factura: idFacturaGen,
@@ -269,11 +269,35 @@ export default function FacturasPage() {
             };
 
             await addDoc(collection(db, 'ventas'), nuevaFactura);
+
+            // 2. REGISTRAR E INDEXAR AUTOMÁTICAMENTE EL CLIENTE EN LA COLECCIÓN DE CLIENTES
+            const idClienteRef = nit !== '222222222222' && nit !== 'CF_GENERAL'
+              ? `CLI_${nit}`
+              : `CLI_${Date.now().toString().slice(-6)}_${i}`;
+
+            const tipoCliFinal = (tipoDoc === '31' || nit.length === 9) ? 'JURIDICO' : 'NATURAL';
+
+            const cliObj = {
+              id_cuenta: userAuth?.id_cuenta || 'DEMO_123',
+              id_cliente: idClienteRef,
+              nombre: cliente,
+              nit: nit,
+              tipo_cliente: tipoCliFinal,
+              telefono: telefono,
+              email: correo,
+              direccion: direccion,
+              ciudad: ciudad,
+              estado: 'ACTIVO',
+              fecha_actualizacion: new Date().toISOString()
+            };
+
+            await setDoc(doc(db, 'clientes', idClienteRef), cliObj, { merge: true });
+
             importadosCount++;
           }
         }
 
-        alert(`¡Éxito! Se crearon e indexaron ${importadosCount} facturas electrónicas masivas.`);
+        alert(`¡Éxito! Se crearon e indexaron ${importadosCount} facturas e-commerce y sus clientes asociados en el Directorio.`);
         setShowModalEcommerce(false);
         setArchivoCSV(null);
       } catch (err: any) {
@@ -568,7 +592,7 @@ export default function FacturasPage() {
           </tbody>
         </table>
 
-        {/* PIE DE TABLA: CONTROLES DE PAGINACIÓN DE 50 VENTAS */}
+        {/* PIE DE TABLA: CONTROLES DE PAGINACIÓN */}
         {totalFacturasCount > 0 && (
           <div className="bg-[#1D2935] border-t border-slate-700/80 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
             <div className="text-slate-400 font-satoshi-regular">
@@ -701,7 +725,7 @@ export default function FacturasPage() {
         </div>
       )}
 
-      {/* MODAL DETALLE / COMPROBANTE FISCAL CON AUDITORÍA DE ANULACIÓN SI APLICA */}
+      {/* MODAL DETALLE / COMPROBANTE FISCAL */}
       {showModalDetail && selectedFactura && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white text-slate-900 rounded-2xl w-full max-w-sm p-6 shadow-2xl font-mono text-xs relative space-y-4">
