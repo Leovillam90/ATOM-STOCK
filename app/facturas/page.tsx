@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function FacturasPage() {
@@ -156,7 +156,7 @@ export default function FacturasPage() {
     document.body.removeChild(link);
   };
 
-  // PROCESAR Y CARGAR ARCHIVO CSV MASIVO E INDEXAR CLIENTES AUTOMÁTICAMENTE
+  // PROCESAR CARGA MASIVA DE FACTURAS CON ACTUALIZACIÓN POR ORDEN_ID
   const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!archivoCSV) return alert('Selecciona un archivo CSV para procesar.');
@@ -206,12 +206,15 @@ export default function FacturasPage() {
         const idxIva = headers.indexOf('iva_porcentaje');
         const idxMetodo = headers.indexOf('metodo_pago');
 
-        let importadosCount = 0;
+        let creadosCount = 0;
+        let actualizadosCount = 0;
 
         for (let i = 1; i < lineas.length; i++) {
           const columnas = lineas[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
           if (columnas.length >= 5 && columnas[idxCliente] && columnas[idxCliente] !== '') {
-            const ordenId = (idxOrdenId !== -1 && columnas[idxOrdenId]) ? columnas[idxOrdenId] : `ORD-${Date.now().toString().slice(-4)}`;
+            const ordenIdRaw = (idxOrdenId !== -1 && columnas[idxOrdenId]) ? columnas[idxOrdenId].trim() : '';
+            const ordenId = ordenIdRaw || `ORD-${Date.now().toString().slice(-4)}_${i}`;
+
             const canal = (idxCanal !== -1 && columnas[idxCanal]) ? columnas[idxCanal] : canalPlataforma;
             const tipoDoc = (idxTipoDoc !== -1 && columnas[idxTipoDoc]) ? columnas[idxTipoDoc] : '13';
             const nit = (idxNit !== -1 && columnas[idxNit]) ? columnas[idxNit].trim() : '222222222222';
@@ -232,12 +235,15 @@ export default function FacturasPage() {
             const ivaMonto = (subtotal * ivaPct) / 100;
             const total = subtotal + ivaMonto;
 
-            const idFacturaGen = `FE-${canal.toUpperCase().slice(0,3)}-${Math.floor(100000 + Math.random() * 900000)}`;
+            // IDENTIFICADOR ÚNICO BASADO EN EL ORDEN_ID PARA PERMITIR RE-PROCESAMIENTO Y ACTUALIZACIÓN
+            const idFacturaDoc = `FACT_${ordenId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
-            // 1. REGISTRAR LA FACTURA EN LA COLECCIÓN DE VENTAS
-            const nuevaFactura = {
+            const docFacturaRef = doc(db, 'ventas', idFacturaDoc);
+            const snapFactura = await getDoc(docFacturaRef);
+
+            const ventaDataObj = {
               id_cuenta: userAuth?.id_cuenta || 'DEMO_123',
-              id_factura: idFacturaGen,
+              id_factura: idFacturaDoc,
               cliente_nombre: cliente,
               cliente_nit: nit,
               cliente_tipo_doc: tipoDoc,
@@ -269,9 +275,16 @@ export default function FacturasPage() {
               ]
             };
 
-            await addDoc(collection(db, 'ventas'), nuevaFactura);
+            if (snapFactura.exists()) {
+              actualizadosCount++;
+            } else {
+              creadosCount++;
+            }
 
-            // 2. REGISTRAR E INDEXAR AUTOMÁTICAMENTE EL CLIENTE EN LA COLECCIÓN DE CLIENTES
+            // GUARDA O ACTUALIZA SEGÚN EL ORDEN_ID RECIBIDO
+            await setDoc(docFacturaRef, ventaDataObj, { merge: true });
+
+            // REGISTRO Y SINCRO DE CLIENTE ASOCIADO
             const idClienteRef = nit !== '222222222222' && nit !== 'CF_GENERAL'
               ? `CLI_${nit}`
               : `CLI_${Date.now().toString().slice(-6)}_${i}`;
@@ -293,12 +306,10 @@ export default function FacturasPage() {
             };
 
             await setDoc(doc(db, 'clientes', idClienteRef), cliObj, { merge: true });
-
-            importadosCount++;
           }
         }
 
-        alert(`¡Éxito! Se crearon e indexaron ${importadosCount} facturas e-commerce y sus clientes asociados en el Directorio.`);
+        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Facturas Nuevas Creadas: ${creadosCount}\n🔄 Facturas Existentes Actualizadas (por ORDEN_ID): ${actualizadosCount}`);
         setShowModalEcommerce(false);
         setArchivoCSV(null);
       } catch (err: any) {
@@ -648,7 +659,7 @@ export default function FacturasPage() {
         )}
       </div>
 
-      {/* MODAL CARGA MASIVA - DISEÑO ESTRUCTURADO EN PASOS IGUAL A PRODUCTOS */}
+      {/* MODAL CARGA MASIVA - DISEÑO ESTRUCTURADO EN PASOS */}
       {showModalEcommerce && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
