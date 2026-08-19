@@ -52,6 +52,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [remember, setRemember] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
 
+  // FUNCIÓN AUXILIAR PARA EXTRAER SOLO DÍGITOS PUROS
+  const obtenerNumeroPuro = (val: string) => {
+    if (!val) return '';
+    let str = String(val).trim();
+    const codigos = ['+593', '+507', '+506', '+502', '+503', '+504', '+505', '+591', '+595', '+598', '+57', '+52', '+54', '+56', '+51', '+58', '+55', '+1'];
+    
+    for (const cod of codigos) {
+      if (str.startsWith(cod)) {
+        str = str.slice(cod.length).trim();
+        break;
+      }
+    }
+    return str.replace(/\D/g, '');
+  };
+
   useEffect(() => {
     const savedUser = localStorage.getItem('atom_user_session');
     if (savedUser) {
@@ -113,13 +128,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           return alert('Por favor ingresa el nombre de la empresa y tu número de teléfono / celular.');
         }
 
-        // Limpieza de caracteres no numéricos para evitar duplicaciones (+57 +57...)
-        const numLimpio = telefonoField.trim().replace(/\D/g, '');
+        // LIMPIEZA: Extraer únicamente los dígitos sin prefijo duplicado
+        const numLimpio = obtenerNumeroPuro(telefonoField);
 
         const idCuenta = `CTA_${Date.now().toString().slice(-8)}`;
         const idUsuario = `USR_${Date.now().toString().slice(-8)}`;
 
-        // A. Crear Cuenta Corporativa
+        // A. Crear Cuenta Corporativa (telefono_contacto guarda el número puro)
         await setDoc(doc(db, 'cuentas', idCuenta), {
           id_cuenta: idCuenta,
           nombre_empresa: nombreField.trim(),
@@ -137,7 +152,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           id_usuario: idUsuario,
           id_sucursal: '',
           nombre: nombreField.trim(),
-          telefono: numLimpio,
+          telefono: numLimpio, // <-- NÚMERO PURO SIN PREFIJO
           indicativo_pais: indicativoField,
           user: term,
           email: term,
@@ -207,7 +222,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }
 
         const userRol = String(userData.rol || 'ADMIN').toUpperCase();
-        const numLimpioUser = String(userData.telefono || '').replace(/^\+\d+\s*/, '').trim();
+        const numLimpioUser = obtenerNumeroPuro(userData.telefono || '');
 
         const sessionObj = {
           id_usuario: userDoc.id,
@@ -225,10 +240,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         setUserAuth(sessionObj);
         localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
 
+        // REDIRECCIÓN SEGÚN EL ROL
         if (userRol === 'ADMIN') {
           router.push('/reportes');
         } else if (userRol === 'GERENTE_BODEGA') {
           router.push('/productos');
+        } else if (userRol === 'CONTABLE') {
+          router.push('/facturas'); // <--- NUEVA REDIRECCIÓN PARA EL CONTABLE
         } else {
           router.push('/ventas');
         }
@@ -257,7 +275,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       path: '/reportes',
       disabled: false,
       badge: null,
-      rolesPermitidos: ['ADMIN'],
+      rolesPermitidos: ['ADMIN', 'CONTABLE'], // <--- ACCESO PERMITIDO AL CONTABLE
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 012-2h2a2 2 0 012 2v6m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2M5 19V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2z" />
@@ -325,7 +343,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       path: '/facturas',
       disabled: false,
       badge: null,
-      rolesPermitidos: ['ADMIN', 'VENDEDOR'],
+      rolesPermitidos: ['ADMIN', 'VENDEDOR', 'CONTABLE'], // <--- ACCESO PERMITIDO AL CONTABLE
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 01-2-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
