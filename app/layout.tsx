@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { collection, query, where, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import '@/app/globals.css';
 
@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [userAuth, setUserAuth] = useState<any>(null);
   const [loadingSession, setLoadingSession] = useState(true);
 
-  // Estados de Conteo de Colecciones para Alertas Dinámicas en el Menú
+  // Estados de Conteo de Colecciones para Alertas Dinámicas y Onboarding
   const [numSucursales, setNumSucursales] = useState<number | null>(null);
   const [numVendedores, setNumVendedores] = useState<number | null>(null);
   const [numProductos, setNumProductos] = useState<number | null>(null);
@@ -26,10 +26,33 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // Tooltip Informativo para Conexiones E-Commerce
   const [showEcommerceTooltip, setShowEcommerceTooltip] = useState(false);
 
+  // LISTA DE PAÍSES E INDICATIVOS LATAM
+  const paisesLatam = [
+    { codigo: '+57', nombre: 'Colombia (+57)', bandera: '🇨🇴' },
+    { codigo: '+52', nombre: 'México (+52)', bandera: '🇲🇽' },
+    { codigo: '+54', nombre: 'Argentina (+54)', bandera: '🇦🇷' },
+    { codigo: '+56', nombre: 'Chile (+56)', bandera: '🇨🇱' },
+    { codigo: '+51', nombre: 'Perú (+51)', bandera: '🇵🇪' },
+    { codigo: '+593', nombre: 'Ecuador (+593)', bandera: '🇪🇨' },
+    { codigo: '+58', nombre: 'Venezuela (+58)', bandera: '🇻🇪' },
+    { codigo: '+507', nombre: 'Panamá (+507)', bandera: '🇵🇦' },
+    { codigo: '+506', nombre: 'Costa Rica (+506)', bandera: '🇨🇷' },
+    { codigo: '+1', nombre: 'Rep. Dominicana (+1)', bandera: '🇩🇴' },
+    { codigo: '+502', nombre: 'Guatemala (+502)', bandera: '🇬🇹' },
+    { codigo: '+503', nombre: 'El Salvador (+503)', bandera: '🇸🇻' },
+    { codigo: '+504', nombre: 'Honduras (+504)', bandera: '🇭🇳' },
+    { codigo: '+505', nombre: 'Nicaragua (+505)', bandera: '🇳🇮' },
+    { codigo: '+591', nombre: 'Bolivia (+591)', bandera: '🇧🇴' },
+    { codigo: '+595', nombre: 'Paraguay (+595)', bandera: '🇵🇾' },
+    { codigo: '+598', nombre: 'Uruguay (+598)', bandera: '🇺🇾' },
+  ];
+
   // FORMULARIO Y ESTADOS DE AUTENTICACIÓN
   const [isRegister, setIsRegister] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [nombreField, setNombreField] = useState('');
+  const [indicativoField, setIndicativoField] = useState('+57');
+  const [telefonoField, setTelefonoField] = useState('');
   const [userField, setUserField] = useState('');
   const [passField, setPassField] = useState('');
   const [remember, setRemember] = useState(false);
@@ -47,7 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     setLoadingSession(false);
   }, []);
 
-  // Escuchar Colecciones de Firestore en tiempo real para evaluar conteos
+  // Escuchar Colecciones de Firestore en tiempo real
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
@@ -78,63 +101,143 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // MANEJADOR UNIFICADO DE AUTENTICACIÓN Y REGISTRO (CON GARANTÍA DE ROL ADM)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userField || !passField) return alert('Ingresa tu correo y contraseña.');
+    if (!userField || !passField) return alert('Ingresa tu correo / usuario y contraseña.');
 
     setLoadingAction(true);
+    const term = userField.trim().toLowerCase();
+
     try {
-      const term = userField.trim().toLowerCase();
-      const qMin = query(collection(db, 'usuarios'), where('user', '==', term));
-      let snap = await getDocs(qMin);
-
-      if (snap.empty) {
-        alert('Usuario no encontrado.');
-        setLoadingAction(false);
-        return;
-      }
-
-      const userDoc = snap.docs[0];
-      const userData = userDoc.data();
-
-      if ((userData.pass || userData.PASS) !== passField.trim()) {
-        alert('Contraseña incorrecta.');
-        setLoadingAction(false);
-        return;
-      }
-
-      const idCuenta = userData.id_cuenta || userData.ID_CUENTA;
-      let empresaNom = 'ATOM STOCK';
-
-      if (idCuenta) {
-        const docCta = await getDoc(doc(db, 'cuentas', idCuenta));
-        if (docCta.exists()) {
-          empresaNom = docCta.data().nombre_empresa || 'ATOM STOCK';
+      if (isRegister) {
+        // ==========================================
+        // 1. REGISTRO DE NUEVA EMPRESA -> ROL OBLIGATORIO: ADMIN
+        // ==========================================
+        if (!nombreField.trim() || !telefonoField.trim()) {
+          setLoadingAction(false);
+          return alert('Por favor ingresa el nombre de la empresa y tu número de teléfono / celular.');
         }
-      }
 
-      const userRol = userData.rol || 'ADMIN';
+        const numLimpio = telefonoField.trim().replace(/\D/g, '');
+        const telefonoCompleto = `${indicativoField} ${numLimpio}`;
 
-      const sessionObj = {
-        id_usuario: userDoc.id,
-        nombre: isRegister && nombreField ? nombreField : (userData.nombre || 'Usuario ATOM'),
-        rol: userRol,
-        user: userData.user || term,
-        id_cuenta: idCuenta,
-        empresa: empresaNom,
-        id_sucursal: userData.id_sucursal || '',
-        sedes_asignadas: userData.sedes_asignadas || (userData.id_sucursal ? [userData.id_sucursal] : [])
-      };
+        const idCuenta = `CTA_${Date.now().toString().slice(-8)}`;
+        const idUsuario = `USR_${Date.now().toString().slice(-8)}`;
 
-      setUserAuth(sessionObj);
-      localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
+        // A. Crear Cuenta Corporativa con Rol Administrador
+        await setDoc(doc(db, 'cuentas', idCuenta), {
+          id_cuenta: idCuenta,
+          nombre_empresa: nombreField.trim(),
+          telefono_contacto: telefonoCompleto,
+          indicativo_pais: indicativoField,
+          email_contacto: term,
+          rol_creador: 'ADMIN',
+          fecha_creacion: new Date().toISOString(),
+          estado: 'ACTIVO'
+        });
 
-      if (userRol === 'ADMIN') {
+        // B. Crear Usuario Administrador Principal (ADM)
+        const usuarioAdminObj = {
+          id_cuenta: idCuenta,
+          id_usuario: idUsuario,
+          id_sucursal: '',
+          nombre: nombreField.trim(),
+          telefono: telefonoCompleto,
+          indicativo_pais: indicativoField,
+          user: term,
+          email: term,
+          pass: passField.trim(),
+          rol: 'ADMIN', // <-- ROL SUPER ADMINISTRADOR
+          estado: 'ACTIVO',
+          sedes_asignadas: [],
+          fecha_creacion: new Date().toISOString()
+        };
+
+        await setDoc(doc(db, 'usuarios', idUsuario), usuarioAdminObj);
+
+        // C. Guardar Sesión con Rol ADMIN
+        const sessionObj = {
+          id_usuario: idUsuario,
+          nombre: nombreField.trim(),
+          telefono: telefonoCompleto,
+          indicativo_pais: indicativoField,
+          rol: 'ADMIN', // <-- FORZADO A ADMIN
+          user: term,
+          id_cuenta: idCuenta,
+          empresa: nombreField.trim(),
+          id_sucursal: '',
+          sedes_asignadas: []
+        };
+
+        setUserAuth(sessionObj);
+        localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
+        alert('¡Empresa registrada con éxito como ADMINISTRADOR PRINCIPAL!');
         router.push('/reportes');
-      } else if (userRol === 'GERENTE_BODEGA') {
-        router.push('/productos');
+
       } else {
-        router.push('/ventas');
+        // ==========================================
+        // 2. INICIO DE SESIÓN
+        // ==========================================
+        const qMin = query(collection(db, 'usuarios'), where('user', '==', term));
+        let snap = await getDocs(qMin);
+
+        if (snap.empty) {
+          const qEmail = query(collection(db, 'usuarios'), where('email', '==', term));
+          snap = await getDocs(qEmail);
+        }
+
+        if (snap.empty) {
+          alert('Usuario no encontrado. Haz clic en "Crear una cuenta nueva" para registrar tu empresa.');
+          setLoadingAction(false);
+          return;
+        }
+
+        const userDoc = snap.docs[0];
+        const userData = userDoc.data();
+
+        if ((userData.pass || userData.PASS) !== passField.trim()) {
+          alert('Contraseña incorrecta.');
+          setLoadingAction(false);
+          return;
+        }
+
+        const idCuenta = userData.id_cuenta || userData.ID_CUENTA;
+        let empresaNom = 'ATOM STOCK';
+
+        if (idCuenta) {
+          const docCta = await getDoc(doc(db, 'cuentas', idCuenta));
+          if (docCta.exists()) {
+            empresaNom = docCta.data().nombre_empresa || 'ATOM STOCK';
+          }
+        }
+
+        // Si no tiene rol especificado, por seguridad se asigna ADMIN
+        const userRol = String(userData.rol || 'ADMIN').toUpperCase();
+
+        const sessionObj = {
+          id_usuario: userDoc.id,
+          nombre: userData.nombre || 'Usuario ATOM',
+          telefono: userData.telefono || '',
+          indicativo_pais: userData.indicativo_pais || '+57',
+          rol: userRol,
+          user: userData.user || term,
+          id_cuenta: idCuenta,
+          empresa: empresaNom,
+          id_sucursal: userData.id_sucursal || '',
+          sedes_asignadas: userData.sedes_asignadas || (userData.id_sucursal ? [userData.id_sucursal] : [])
+        };
+
+        setUserAuth(sessionObj);
+        localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
+
+        if (userRol === 'ADMIN') {
+          router.push('/reportes');
+        } else if (userRol === 'GERENTE_BODEGA') {
+          router.push('/productos');
+        } else {
+          router.push('/ventas');
+        }
       }
 
     } catch (err: any) {
@@ -150,10 +253,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     router.push('/');
   };
 
-  const esCuentaNueva = numSucursales === 0 && numProductos === 0;
-  const rolActual = userAuth?.rol || 'ADMIN';
+  const esCuentaNueva = numSucursales === 0 || numProductos === 0 || (numVendedores !== null && numVendedores <= 1);
+  const rolActual = String(userAuth?.rol || 'ADMIN').toUpperCase();
 
-  // CONFIGURACIÓN DE PILL BADGES UNIFICADOS CON ROJO NEÓN CLARO ATOM (#FF0055)
+  // MENÚ LATERAL DE NAVEGACIÓN CON PERMISOS DE ROL
   const menuItems = [
     {
       label: 'Reportes / Analytics',
@@ -219,7 +322,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       rolesPermitidos: ['ADMIN', 'VENDEDOR'],
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 00-4zm-8 2a2 2 0 100 4 2 2 0 00-4z" />
         </svg>
       )
     },
@@ -285,7 +388,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }
 
   /* -------------------------------------------------------------------------- */
-  /* PANTALLA DE LOGIN UNIFICADA CON ESTILO TARJETA FLOTANTE Y SPLIT SCREEN     */
+  /* PANTALLA DE LOGIN Y REGISTRO DE EMPRESA                                    */
   /* -------------------------------------------------------------------------- */
   if (!userAuth) {
     return (
@@ -293,13 +396,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <body className="bg-[#111823] min-h-screen text-slate-100 antialiased font-sans select-none p-0 md:p-4 lg:p-6">
           <div className="w-full h-full min-h-[calc(100vh-2rem)] flex flex-col lg:flex-row rounded-none md:rounded-3xl overflow-hidden border border-slate-800/80 shadow-2xl bg-[#1a2332]">
             
-            {/* LADO IZQUIERDO: BRANDING E IMAGEN */}
+            {/* LADO IZQUIERDO */}
             <div className="hidden lg:flex w-1/2 relative flex-col justify-between p-12 overflow-hidden bg-[#0d131f]">
               <div 
                 className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity scale-105"
-                style={{ 
-                  backgroundImage: `url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=1600&auto=format&fit=crop')` 
-                }}
+                style={{ backgroundImage: `url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?q=80&w=1600&auto=format&fit=crop')` }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#0d131f] via-[#0d131f]/70 to-transparent" />
               <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-[#0DE8C0]/20 rounded-full blur-3xl pointer-events-none" />
@@ -356,7 +457,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </div>
 
-            {/* LADO DERECHO: FORMULARIO FLOTANTE */}
+            {/* LADO DERECHO: FORMULARIO */}
             <div className="flex-1 flex flex-col justify-between p-6 sm:p-12 bg-[#1a2332] relative">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2 lg:hidden">
@@ -381,7 +482,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
               </div>
 
-              <div className="w-full max-w-md mx-auto space-y-8 my-auto py-8">
+              <div className="w-full max-w-md mx-auto space-y-6 my-auto py-8">
                 <div className="text-center space-y-2">
                   <h2 className="text-2xl font-black text-white tracking-tight">
                     {isRegister ? 'Registro de Empresa' : 'Bienvenido, ingresa tus datos'}
@@ -393,27 +494,58 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-6">
+                <form onSubmit={handleLogin} className="space-y-5">
 
                   {isRegister && (
-                    <div className="relative border-b border-slate-700 focus-within:border-[#0DE8C0] transition-colors pb-1">
-                      <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
-                        Nombre del Administrador / Empresa
-                      </label>
-                      <div className="flex items-center">
-                        <svg className="w-4 h-4 text-slate-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        <input
-                          type="text"
-                          required
-                          value={nombreField}
-                          onChange={(e) => setNombreField(e.target.value)}
-                          placeholder="Leonardo Villamizar"
-                          className="w-full bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none"
-                        />
+                    <>
+                      <div className="relative border-b border-slate-700 focus-within:border-[#0DE8C0] transition-colors pb-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                          Nombre del Administrador / Empresa *
+                        </label>
+                        <div className="flex items-center">
+                          <svg className="w-4 h-4 text-slate-500 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          <input
+                            type="text"
+                            required
+                            value={nombreField}
+                            onChange={(e) => setNombreField(e.target.value)}
+                            placeholder="Leonardo Villamizar"
+                            className="w-full bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none"
+                          />
+                        </div>
                       </div>
-                    </div>
+
+                      {/* SELECTOR DE PAÍS / INDICATIVO + NÚMERO DE TELÉFONO */}
+                      <div className="relative border-b border-slate-700 focus-within:border-[#0DE8C0] transition-colors pb-1">
+                        <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                          País & Número Celular / Teléfono *
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={indicativoField}
+                            onChange={(e) => setIndicativoField(e.target.value)}
+                            className="bg-[#111823] text-xs font-mono font-bold text-[#0DE8C0] rounded-lg p-1.5 border border-slate-700 focus:outline-none shrink-0"
+                          >
+                            {paisesLatam.map((p) => (
+                              <option key={p.codigo} value={p.codigo} className="bg-[#111823] text-white">
+                                {p.bandera} {p.codigo}
+                              </option>
+                            ))}
+                          </select>
+
+                          <input
+                            type="text"
+                            required
+                            value={telefonoField}
+                            onChange={(e) => setTelefonoField(e.target.value)}
+                            placeholder="313 871 2634"
+                            className="w-full bg-transparent text-xs text-white placeholder-slate-600 focus:outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+                    </>
                   )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -497,10 +629,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       className="w-full bg-gradient-to-r from-[#0DE8C0] to-[#0bcfa8] hover:from-[#0bcfa8] hover:to-[#09b897] text-[#0d131f] font-black py-3.5 rounded-full text-xs uppercase tracking-wider transition-all duration-300 shadow-lg shadow-[#0DE8C0]/10 disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {loadingAction ? (
-                        <span>Iniciando sesión...</span>
+                        <span>{isRegister ? 'Registrando empresa...' : 'Iniciando sesión...'}</span>
                       ) : (
                         <>
-                          <span>{isRegister ? 'Registrar Empresa' : 'Iniciar sesión'}</span>
+                          <span>{isRegister ? 'REGISTRAR EMPRESA' : 'INICIAR SESIÓN'}</span>
                           <svg className="w-4 h-4 text-[#0d131f]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                           </svg>
@@ -544,12 +676,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   }
 
   /* -------------------------------------------------------------------------- */
-  /* PANEL PRINCIPAL DASHBOARD CUANDO EL USUARIO YA ESTÁ AUTENTICADO            */
+  /* CÁLCULO DE PROGRESO DE CONFIGURACIÓN INICIAL (ONBOARDING 0% A 100%)       */
   /* -------------------------------------------------------------------------- */
   let pasocumplidoCount = 0;
-  if (numSucursales && numSucursales > 0) pasocumplidoCount++;
-  if (numProductos && numProductos > 0) pasocumplidoCount++;
-  if (numVendedores && numVendedores > 1) pasocumplidoCount++;
+  
+  // Paso 1: Datos Personales / Celular
+  const pasoPerfilCompletado = !!(userAuth?.nombre && (userAuth?.telefono || userAuth?.num_doc));
+  if (pasoPerfilCompletado) pasocumplidoCount++;
+
+  // Paso 2: Crear primera Sede real (numSucursales > 0)
+  const pasoSedesCompletado = !!(numSucursales && numSucursales > 0);
+  if (pasoSedesCompletado) pasocumplidoCount++;
+
+  // Paso 3: Vendedores / Equipo (numVendedores > 1)
+  const pasoEquipoCompletado = !!(numVendedores && numVendedores > 1);
+  if (pasoEquipoCompletado) pasocumplidoCount++;
+
   const porcentajeProgreso = Math.round((pasocumplidoCount / 3) * 100);
 
   return (
@@ -568,7 +710,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   ATOM STOCK
                 </div>
                 <div className="text-[10px] text-[#0DE8C0] font-satoshi-black uppercase tracking-wider">
-                  {rolActual === 'ADMIN' ? 'SUITE OMNICANAL' : `ROL: ${rolActual}`}
+                  {rolActual === 'ADMIN' ? 'ADMINISTRADOR (ADM)' : `ROL: ${rolActual}`}
                 </div>
               </div>
             </div>
@@ -636,7 +778,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </div>
                 <div className="truncate text-left">
                   <div className="text-xs font-satoshi-black text-white truncate">{userAuth?.nombre}</div>
-                  <div className="text-[9px] text-[#0DE8C0] font-satoshi-black uppercase">{userAuth?.rol || 'ADMIN'}</div>
+                  <div className="text-[9px] text-[#0DE8C0] font-satoshi-black uppercase">
+                    {rolActual === 'ADMIN' ? 'ADMINISTRADOR (ADM)' : rolActual}
+                  </div>
                 </div>
               </div>
 
@@ -679,113 +823,118 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </aside>
 
-        {/* ÁREA DE CONTENIDO PRINCIPAL */}
+        {/* ÁREA DE CONTENIDO PRINCIPAL CON ONBOARDING (0% A 100%) */}
         <main className="flex-1 overflow-y-auto">
           {esCuentaNueva && pathname === '/reportes' && rolActual === 'ADMIN' ? (
             <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-8 animate-in fade-in">
+              
+              {/* TARJETA DE PROGRESO DE CONFIGURACIÓN 0% A 100% */}
               <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-[#0DE8C0]/10 blur-3xl pointer-events-none rounded-full"></div>
                 <h1 className="text-3xl font-black text-white font-satoshi-black tracking-tight">
-                  ¡Bienvenido a ATOM STOCK! 🚀
+                  ¡Bienvenido a ATOM STOCK, {userAuth?.nombre}! 🚀
                 </h1>
                 <p className="text-xs text-[#A0AEC0] mt-1 font-satoshi-regular max-w-xl">
-                  Completa estos sencillos pasos para activar tu sistema de inventario y terminal POS multibodega.
+                  Para habilitar el 100% de la plataforma y el punto de venta, completa la configuración inicial de tu empresa:
                 </p>
 
                 <div className="mt-6 pt-4 border-t border-slate-700/60 space-y-2">
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
-                      Progreso de Configuración
+                      Progreso de Configuración Inicial
                     </span>
-                    <span className="font-satoshi-black text-white">
-                      {porcentajeProgreso}% completado ({pasocumplidoCount} de 3 pasos)
+                    <span className="font-satoshi-black text-white font-mono text-sm">
+                      {porcentajeProgreso}% COMPLETADO
                     </span>
                   </div>
-                  <div className="w-full h-3 bg-[#1D2935] rounded-full overflow-hidden p-0.5 border border-slate-700">
+                  <div className="w-full h-3.5 bg-[#1D2935] rounded-full overflow-hidden p-0.5 border border-slate-700">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#C81FDA] to-[#0DE8C0] transition-all duration-500"
+                      className="h-full rounded-full bg-gradient-to-r from-[#C81FDA] via-purple-500 to-[#0DE8C0] transition-all duration-500"
                       style={{ width: `${Math.max(porcentajeProgreso, 5)}%` }}
                     ></div>
                   </div>
                 </div>
               </div>
 
+              {/* GRID DE 3 PASOS GUIADOS DE CONFIGURACIÓN */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                {/* PASO 1: DATOS PERSONALES, NIT Y CELULAR */}
                 <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4 relative">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <span className="w-8 h-8 rounded-xl bg-[#0DE8C0]/10 text-[#0DE8C0] font-satoshi-black flex items-center justify-center text-xs">
                         1
                       </span>
-                      <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        ! INGRESAR
+                      <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        pasoPerfilCompletado ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40' : 'bg-[#FF0055] text-white'
+                      }`}>
+                        {pasoPerfilCompletado ? '✓ COMPLETADO' : '! REQUERIDO'}
                       </span>
                     </div>
                     <h3 className="font-satoshi-black text-base text-white uppercase tracking-wide">
-                      Sede Principal
+                      Datos Personales & Celular
                     </h3>
                     <p className="text-xs text-[#A0AEC0] font-satoshi-regular mt-1 leading-relaxed">
-                      Establece el punto físico o virtual desde donde despacharás o venderás productos.
+                      Ingresa tu número de celular, NIT y datos del administrador para la facturación.
                     </p>
                   </div>
 
                   <Link
-                    href="/sucursales"
+                    href="/perfil"
                     className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-md text-center flex items-center justify-center gap-1.5"
                   >
-                    <span>+ Crear Sede</span>
+                    <span>{pasoPerfilCompletado ? 'Ver Datos' : 'Actualizar Perfil'}</span>
                   </Link>
                 </div>
 
+                {/* PASO 2: CREAR PRIMERA SEDE REAL */}
                 <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <span className="w-8 h-8 rounded-xl bg-[#6884C5]/10 text-[#6884C5] font-satoshi-black flex items-center justify-center text-xs">
                         2
                       </span>
-                      <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        SIN DATOS
+                      <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        pasoSedesCompletado ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40' : 'bg-[#FF0055] text-white'
+                      }`}>
+                        {pasoSedesCompletado ? '✓ COMPLETADO' : '! REQUERIDO'}
                       </span>
                     </div>
                     <h3 className="font-satoshi-black text-base text-white uppercase tracking-wide">
-                      Catálogo & Stock
+                      Crear Primera Sede
                     </h3>
                     <p className="text-xs text-[#A0AEC0] font-satoshi-regular mt-1 leading-relaxed">
-                      Crea tu catálogo manualmente o importa tu lista en Excel/CSV en segundos.
+                      Registra tu punto de venta o bodega física con su dirección real.
                     </p>
                   </div>
 
-                  <div className="flex gap-2">
-                    <Link
-                      href="/productos"
-                      className="flex-1 bg-[#1D2935] border border-[#6884C5] text-[#6884C5] hover:text-white font-satoshi-black py-2.5 rounded-xl text-[11px] uppercase tracking-wider text-center"
-                    >
-                      + Producto
-                    </Link>
-                    <Link
-                      href="/productos"
-                      className="flex-1 bg-[#6884C5] hover:bg-[#5772b0] text-white font-satoshi-black py-2.5 rounded-xl text-[11px] uppercase tracking-wider text-center"
-                    >
-                      Importar CSV
-                    </Link>
-                  </div>
+                  <Link
+                    href="/sucursales"
+                    className="w-full bg-[#6884C5] hover:bg-[#5772b0] text-white font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-md text-center flex items-center justify-center gap-1.5"
+                  >
+                    <span>{pasoSedesCompletado ? 'Gestionar Sedes' : '+ Crear Sede Real'}</span>
+                  </Link>
                 </div>
 
+                {/* PASO 3: EQUIPO Y VENDEDORES (REQUERIDO) */}
                 <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4">
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <span className="w-8 h-8 rounded-xl bg-[#C81FDA]/10 text-[#C81FDA] font-satoshi-black flex items-center justify-center text-xs">
                         3
                       </span>
-                      <span className="bg-[#FF0055] text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        + AÑADIR
+                      <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        pasoEquipoCompletado ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40' : 'bg-[#FF0055] text-white'
+                      }`}>
+                        {pasoEquipoCompletado ? '✓ COMPLETADO' : '! REQUERIDO'}
                       </span>
                     </div>
                     <h3 className="font-satoshi-black text-base text-white uppercase tracking-wide">
-                      Equipo de Trabajo
+                      Equipo & Vendedores
                     </h3>
                     <p className="text-xs text-[#A0AEC0] font-satoshi-regular mt-1 leading-relaxed">
-                      Asigna cajeros o administradores a tus sedes para controlar el flujo de caja.
+                      Añade cajeros o administradores asignados para la operación diaria de tu negocio.
                     </p>
                   </div>
 
@@ -793,9 +942,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     href="/vendedores"
                     className="w-full bg-[#1D2935] hover:bg-[#15202b] text-[#0DE8C0] border border-[#0DE8C0]/40 font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 text-center"
                   >
-                    <span>+ Añadir Vendedor</span>
+                    <span>{pasoEquipoCompletado ? 'Ver Equipo' : '+ Añadir Vendedor'}</span>
                   </Link>
                 </div>
+
               </div>
             </div>
           ) : (
