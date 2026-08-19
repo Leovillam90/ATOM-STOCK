@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -29,6 +29,7 @@ export default function FacturasPage() {
   const [archivoCSV, setArchivoCSV] = useState<File | null>(null);
   const [canalPlataforma, setCanalPlataforma] = useState('DROPI');
   const [loadingEcom, setLoadingEcom] = useState(false);
+  const fileInputEcomRef = useRef<HTMLInputElement>(null);
 
   const formatoCOP = (v: number) => 
     new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
@@ -592,7 +593,7 @@ export default function FacturasPage() {
           </tbody>
         </table>
 
-        {/* PIE DE TABLA: CONTROLES DE PAGINACIÓN */}
+        {/* PIE DE TABLA: CONTROLES DE PAGINACIÓN DE 50 VENTAS */}
         {totalFacturasCount > 0 && (
           <div className="bg-[#1D2935] border-t border-slate-700/80 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
             <div className="text-slate-400 font-satoshi-regular">
@@ -647,25 +648,26 @@ export default function FacturasPage() {
         )}
       </div>
 
-      {/* MODAL CARGA MASIVA (DROPI / VÉNDELO / MASTER) */}
+      {/* MODAL CARGA MASIVA - DISEÑO ESTRUCTURADO EN PASOS IGUAL A PRODUCTOS */}
       {showModalEcommerce && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-[#253443] border border-slate-700 p-6 rounded-2xl max-w-md w-full space-y-4 shadow-2xl text-xs text-white">
-            <div className="flex justify-between items-center border-b border-slate-700 pb-3">
-              <h2 className="text-sm font-satoshi-black uppercase flex items-center gap-2">
-                <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
+            <div className="flex justify-between items-center mb-6 border-b border-slate-700/60 pb-3">
+              <h3 className="text-lg font-satoshi-black text-white uppercase">CARGA MASIVA DE FACTURAS</h3>
+              <button onClick={() => setShowModalEcommerce(false)} className="text-slate-400 hover:text-white transition">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
-                <span>Importación Masiva DIAN (Dropi / Véndelo / Master)</span>
-              </h2>
-              <button onClick={() => setShowModalEcommerce(false)} className="text-slate-400 hover:text-white">✕</button>
+              </button>
             </div>
 
             <form onSubmit={handleProcesarCargaMasiva} className="space-y-4">
               <div>
-                <label className="block text-slate-300 font-satoshi-black mb-1">Plataforma / Canal Predefinido</label>
+                <label className="block text-xs font-satoshi-black text-slate-300 mb-1.5 uppercase">
+                  Plataforma / Canal Predefinido
+                </label>
                 <select
-                  className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2.5 text-white focus:outline-none"
+                  className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-3 text-xs text-white font-satoshi-black focus:outline-none focus:border-[#0DE8C0]"
                   value={canalPlataforma}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCanalPlataforma(e.target.value)}
                 >
@@ -676,47 +678,58 @@ export default function FacturasPage() {
                 </select>
               </div>
 
-              <div className="p-3 bg-[#1D2935] rounded-xl border border-slate-700/60 space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="font-satoshi-black text-slate-300">¿No tienes la plantilla DIAN?</span>
-                  <button
-                    type="button"
-                    onClick={handleDescargarPlantilla}
-                    className="text-[#0DE8C0] font-satoshi-black hover:underline"
-                  >
-                    Descargar Plantilla CSV
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Incluye columnas de Tipo Doc, Dirección, Ciudad, Teléfono, Responsabilidad Fiscal e IVA.
+              {/* PASO 1: DESCARGA DE PLANTILLA */}
+              <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 text-xs text-slate-300 space-y-2">
+                <p className="font-satoshi-black text-white">PASO 1: Descarga la plantilla estructurada</p>
+                <p className="text-[11px] text-[#A0AEC0]">
+                  Soporta Tipo Doc, Dirección, Ciudad, Teléfono, Responsabilidad Fiscal e IVA. Indexa clientes automáticamente en el Directorio.
                 </p>
+                <button 
+                  type="button"
+                  onClick={handleDescargarPlantilla}
+                  className="bg-[#6884C5] text-white font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase shadow hover:bg-[#5772b0] transition flex items-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span>DESCARGAR PLANTILLA CSV</span>
+                </button>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-satoshi-black mb-1">Seleccionar Archivo CSV *</label>
-                <input
-                  type="file"
+              {/* PASO 2: ADJUNTAR ARCHIVO CON ÁREA PUNTEADA */}
+              <div 
+                onClick={() => fileInputEcomRef.current?.click()}
+                className="border-2 border-dashed border-slate-700/80 rounded-xl p-6 text-center space-y-2 bg-[#1D2935] cursor-pointer hover:border-[#0DE8C0]/60 transition"
+              >
+                <p className="font-satoshi-black text-xs text-white">PASO 2: Adjunta tu archivo (.csv)</p>
+                <p className="text-xs text-[#A0AEC0]">
+                  {archivoCSV ? `📄 ${archivoCSV.name}` : 'Seleccionar archivo Ningún archivo seleccionado'}
+                </p>
+                <input 
+                  type="file" 
+                  ref={fileInputEcomRef}
                   accept=".csv"
-                  required
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setArchivoCSV(e.target.files ? e.target.files[0] : null)}
-                  className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2 text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[#0DE8C0] file:text-[#1D2935] file:font-satoshi-black file:text-xs"
+                  className="hidden"
+                  required
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-700">
-                <button
-                  type="button"
+              {/* BOTONES INFERIORES */}
+              <div className="flex gap-3 pt-4 border-t border-slate-700/60">
+                <button 
+                  type="button" 
                   onClick={() => setShowModalEcommerce(false)}
-                  className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-xl font-satoshi-black"
+                  className="flex-1 bg-[#1D2935] text-slate-300 font-satoshi-black py-3 rounded-xl text-xs uppercase hover:bg-slate-800 transition"
                 >
-                  Cancelar
+                  CANCELAR
                 </button>
-                <button
-                  type="submit"
-                  disabled={loadingEcom}
-                  className="px-4 py-2.5 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black rounded-xl shadow-lg"
+                <button 
+                  type="submit" 
+                  disabled={loadingEcom || !archivoCSV}
+                  className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5 transition"
                 >
-                  {loadingEcom ? 'Procesando Carga...' : 'Procesar e Importar'}
+                  {loadingEcom ? 'Procesando Carga...' : 'PROCESAR E INDEXAR'}
                 </button>
               </div>
 
