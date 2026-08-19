@@ -10,6 +10,9 @@ export default function ClientesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<'TODOS' | 'NATURAL' | 'JURIDICO'>('TODOS');
 
+  // CONTROL DE VISTA: TARJETAS O LISTA/TABLA
+  const [viewModeClientes, setViewModeClientes] = useState<'TARJETAS' | 'LISTA'>('TARJETAS');
+
   // Modal Crear / Editar Cliente
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -440,7 +443,7 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      {/* BARRA DE BÚSQUEDA Y FILTROS */}
+      {/* BARRA DE BÚSQUEDA Y FILTROS + BOTONES DE VISTA (TARJETAS / LISTA) */}
       <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-3 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="relative w-full md:w-80">
           <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -455,187 +458,297 @@ export default function ClientesPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-          <button
-            type="button"
-            onClick={() => setFiltroTipo('TODOS')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-satoshi-black transition ${
-              filtroTipo === 'TODOS'
-                ? 'bg-[#0DE8C0] text-[#1D2935]'
-                : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
-            }`}
-          >
-            Todos ({clientes.length})
-          </button>
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+          {/* CONMUTADOR DE VISTA DE CLIENTES */}
+          <div className="bg-[#1D2935] p-1 rounded-xl flex items-center gap-1 border border-slate-700 shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewModeClientes('TARJETAS')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition flex items-center gap-1.5 ${
+                viewModeClientes === 'TARJETAS' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'text-[#A0AEC0] hover:text-white'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              <span>Vista Tarjetas</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setFiltroTipo('NATURAL')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-satoshi-black transition ${
-              filtroTipo === 'NATURAL'
-                ? 'bg-[#6884C5] text-white'
-                : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
-            }`}
-          >
-            Personas ({totalPersonas})
-          </button>
+            <button
+              type="button"
+              onClick={() => setViewModeClientes('LISTA')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition flex items-center gap-1.5 ${
+                viewModeClientes === 'LISTA' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'text-[#A0AEC0] hover:text-white'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              <span>Vista Lista</span>
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setFiltroTipo('JURIDICO')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-satoshi-black transition ${
-              filtroTipo === 'JURIDICO'
-                ? 'bg-[#C81FDA] text-white'
-                : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
-            }`}
-          >
-            Empresas ({totalEmpresas})
-          </button>
+          {/* PILLS DE FILTRADO TIPO */}
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setFiltroTipo('TODOS')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-satoshi-black transition ${
+                filtroTipo === 'TODOS'
+                  ? 'bg-[#0DE8C0] text-[#1D2935]'
+                  : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
+              }`}
+            >
+              Todos ({clientes.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFiltroTipo('NATURAL')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-satoshi-black transition ${
+                filtroTipo === 'NATURAL'
+                  ? 'bg-[#6884C5] text-white'
+                  : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
+              }`}
+            >
+              Personas ({totalPersonas})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFiltroTipo('JURIDICO')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-satoshi-black transition ${
+                filtroTipo === 'JURIDICO'
+                  ? 'bg-[#C81FDA] text-white'
+                  : 'bg-[#1D2935] text-[#A0AEC0] hover:text-white border border-slate-700/60'
+              }`}
+            >
+              Empresas ({totalEmpresas})
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* GRID DE CLIENTES (3 COLUMNAS) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {clientesFiltrados.map((c, idx) => {
-          const isJuridico = c.tipo_cliente === 'JURIDICO';
-          const telClean = String(c.telefono || '').replace(/\D/g, '');
+      {/* VISTA 1: TARJETAS (GRID 3 COLUMNAS) */}
+      {viewModeClientes === 'TARJETAS' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {clientesFiltrados.map((c, idx) => {
+            const isJuridico = c.tipo_cliente === 'JURIDICO';
+            const telClean = String(c.telefono || '').replace(/\D/g, '');
 
-          return (
-            <div
-              key={c.id_doc || idx}
-              className="group relative bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col justify-between transition-all duration-300 hover:border-slate-600"
-            >
-              <div>
-                <div className="flex justify-between items-start mb-3">
-                  <span className={`text-[10px] font-satoshi-black uppercase px-2.5 py-1 rounded-lg tracking-wider ${
-                    isJuridico 
-                      ? 'bg-[#C81FDA]/15 text-[#C81FDA] border border-[#C81FDA]/30' 
-                      : 'bg-[#6884C5]/15 text-[#6884C5] border border-[#6884C5]/30'
-                  }`}>
-                    {isJuridico ? 'Empresa (NIT)' : 'Persona Natural'}
-                  </span>
+            return (
+              <div
+                key={c.id_doc || idx}
+                className="group relative bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col justify-between transition-all duration-300 hover:border-slate-600"
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-3">
+                    <span className={`text-[10px] font-satoshi-black uppercase px-2.5 py-1 rounded-lg tracking-wider ${
+                      isJuridico 
+                        ? 'bg-[#C81FDA]/15 text-[#C81FDA] border border-[#C81FDA]/30' 
+                        : 'bg-[#6884C5]/15 text-[#6884C5] border border-[#6884C5]/30'
+                    }`}>
+                      {isJuridico ? 'Empresa (NIT)' : 'Persona Natural'}
+                    </span>
 
-                  <div className="relative">
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenuId(openMenuId === c.id_doc ? null : c.id_doc)}
+                        className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-[#1D2935] transition"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </button>
+
+                      {openMenuId === c.id_doc && (
+                        <div ref={menuRef} className="absolute right-0 mt-1 w-36 bg-[#1D2935] border border-slate-700 rounded-xl shadow-2xl py-1 z-20">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(c)}
+                            className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-[#253443] font-satoshi-regular flex items-center gap-2"
+                          >
+                            <svg className="w-3.5 h-3.5 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDelete(e, c)}
+                            className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-950/40 font-satoshi-regular flex items-center gap-2 border-t border-slate-800"
+                          >
+                            <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>Eliminar</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 className="font-black text-lg text-white font-satoshi-black uppercase tracking-wide truncate">
+                    {c.nombre || c.NOMBRE}
+                  </h3>
+
+                  <div className="flex items-center gap-2 mt-1 mb-4">
+                    <span className="font-mono text-[11px] text-[#A0AEC0] bg-[#1D2935] px-2 py-0.5 rounded border border-slate-700/60">
+                      NIT/Doc: {c.nit || c.NIT || 'CF_GENERAL'}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => setOpenMenuId(openMenuId === c.id_doc ? null : c.id_doc)}
-                      className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-[#1D2935] transition"
+                      onClick={(e) => handleCopiarNit(e, c.nit || 'CF_GENERAL')}
+                      className="text-[10px] text-slate-400 hover:text-[#0DE8C0] font-satoshi-regular transition"
+                      title="Copiar Documento"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                      </svg>
+                      {copiedId === (c.nit || 'CF_GENERAL') ? '✓ Copiado' : '📋 Copiar'}
                     </button>
+                  </div>
 
-                    {openMenuId === c.id_doc && (
-                      <div ref={menuRef} className="absolute right-0 mt-1 w-36 bg-[#1D2935] border border-slate-700 rounded-xl shadow-2xl py-1 z-20">
+                  <div className="space-y-2 text-xs text-[#A0AEC0] font-satoshi-regular">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h32a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 6a2 2 0 012-2h32a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2zm0 6a2 2 0 012-2h32a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2z" />
+                      </svg>
+                      <span className="font-mono text-slate-300">{formatTelefono(c.telefono)}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <span className="truncate">{c.email || c.EMAIL || 'Sin correo registrado'}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="truncate">{c.direccion || 'General'} - {c.ciudad || 'Colombia'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-slate-700/60 flex items-center justify-between">
+                  {telClean ? (
+                    <a
+                      href={`https://api.whatsapp.com/send?phone=${telClean}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-[#0DE8C0] hover:underline font-satoshi-black text-xs flex items-center gap-1.5"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      <span>WhatsApp</span>
+                    </a>
+                  ) : (
+                    <span className="text-slate-500 text-xs font-satoshi-regular">Sin WhatsApp</span>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEdit(c)}
+                    className="bg-[#1D2935] hover:bg-[#15202b] text-[#0DE8C0] border border-[#0DE8C0]/40 font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition flex items-center gap-1.5"
+                  >
+                    <span>Ver Detalle</span>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+
+              </div>
+            );
+          })}
+
+          {clientesFiltrados.length === 0 && (
+            <div className="col-span-full text-center py-16 bg-[#253443] border border-slate-700/50 rounded-2xl text-[#A0AEC0] text-xs font-satoshi-regular">
+              No se encontraron clientes que coincidan con la búsqueda o filtro seleccionado.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VISTA 2: LISTA / TABLA DE CLIENTES */}
+      {viewModeClientes === 'LISTA' && (
+        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl shadow-xl overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-[#1D2935] text-[11px] font-satoshi-black text-[#A0AEC0] uppercase border-b border-slate-700">
+                <th className="p-4">Cliente / Razón Social</th>
+                <th className="p-4">NIT / Cédula</th>
+                <th className="p-4">Tipo</th>
+                <th className="p-4">Teléfono</th>
+                <th className="p-4">Correo Electrónico</th>
+                <th className="p-4">Ubicación</th>
+                <th className="p-4 text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-700/60 font-satoshi-regular">
+              {clientesFiltrados.map((c, idx) => {
+                const isJuridico = c.tipo_cliente === 'JURIDICO';
+                const telClean = String(c.telefono || '').replace(/\D/g, '');
+
+                return (
+                  <tr key={c.id_doc || idx} className="hover:bg-[#1D2935]/80 transition">
+                    <td className="p-4 font-satoshi-black text-white uppercase">{c.nombre || c.NOMBRE}</td>
+                    <td className="p-4 font-mono text-[#0DE8C0]">{c.nit || c.NIT || 'CF_GENERAL'}</td>
+                    <td className="p-4">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-satoshi-black ${
+                        isJuridico ? 'bg-[#C81FDA]/20 text-[#C81FDA]' : 'bg-[#6884C5]/20 text-[#6884C5]'
+                      }`}>
+                        {isJuridico ? 'Empresa' : 'Persona'}
+                      </span>
+                    </td>
+                    <td className="p-4 font-mono text-slate-300">{formatTelefono(c.telefono)}</td>
+                    <td className="p-4 text-slate-300">{c.email || c.EMAIL || 'N/A'}</td>
+                    <td className="p-4 text-slate-300">{c.direccion || 'General'} ({c.ciudad || 'Colombia'})</td>
+                    <td className="p-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        {telClean && (
+                          <a
+                            href={`https://api.whatsapp.com/send?phone=${telClean}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="bg-[#25D366]/10 text-[#25D366] border border-[#25D366]/30 px-2.5 py-1 rounded-lg text-xs font-satoshi-black hover:bg-[#25D366]/20 transition"
+                          >
+                            WhatsApp
+                          </a>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleOpenEdit(c)}
-                          className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-[#253443] font-satoshi-regular flex items-center gap-2"
+                          className="bg-[#1D2935] text-[#0DE8C0] border border-[#0DE8C0]/40 font-satoshi-black px-2.5 py-1 rounded-lg text-xs hover:bg-[#0DE8C0]/10 transition"
                         >
-                          <svg className="w-3.5 h-3.5 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          <span>Editar</span>
+                          Editar
                         </button>
                         <button
                           type="button"
                           onClick={(e) => handleDelete(e, c)}
-                          className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-950/40 font-satoshi-regular flex items-center gap-2 border-t border-slate-800"
+                          className="bg-red-950/40 text-red-400 border border-red-800/40 font-satoshi-black px-2 py-1 rounded-lg text-xs hover:bg-red-900/60 transition"
                         >
-                          <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          <span>Eliminar</span>
+                          Eliminar
                         </button>
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </td>
+                  </tr>
+                );
+              })}
 
-                <h3 className="font-black text-lg text-white font-satoshi-black uppercase tracking-wide truncate">
-                  {c.nombre || c.NOMBRE}
-                </h3>
-
-                <div className="flex items-center gap-2 mt-1 mb-4">
-                  <span className="font-mono text-[11px] text-[#A0AEC0] bg-[#1D2935] px-2 py-0.5 rounded border border-slate-700/60">
-                    NIT/Doc: {c.nit || c.NIT || 'CF_GENERAL'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleCopiarNit(e, c.nit || 'CF_GENERAL')}
-                    className="text-[10px] text-slate-400 hover:text-[#0DE8C0] font-satoshi-regular transition"
-                    title="Copiar Documento"
-                  >
-                    {copiedId === (c.nit || 'CF_GENERAL') ? '✓ Copiado' : '📋 Copiar'}
-                  </button>
-                </div>
-
-                <div className="space-y-2 text-xs text-[#A0AEC0] font-satoshi-regular">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h32a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 6a2 2 0 012-2h32a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2zm0 6a2 2 0 012-2h32a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2z" />
-                    </svg>
-                    <span className="font-mono text-slate-300">{formatTelefono(c.telefono)}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <span className="truncate">{c.email || c.EMAIL || 'Sin correo registrado'}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <span className="truncate">{c.direccion || 'General'} - {c.ciudad || 'Colombia'}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-slate-700/60 flex items-center justify-between">
-                {telClean ? (
-                  <a
-                    href={`https://api.whatsapp.com/send?phone=${telClean}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-[#0DE8C0] hover:underline font-satoshi-black text-xs flex items-center gap-1.5"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <span>WhatsApp</span>
-                  </a>
-                ) : (
-                  <span className="text-slate-500 text-xs font-satoshi-regular">Sin WhatsApp</span>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => handleOpenEdit(c)}
-                  className="bg-[#1D2935] hover:bg-[#15202b] text-[#0DE8C0] border border-[#0DE8C0]/40 font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition flex items-center gap-1.5"
-                >
-                  <span>Ver Detalle</span>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-
-            </div>
-          );
-        })}
-
-        {clientesFiltrados.length === 0 && (
-          <div className="col-span-full text-center py-16 bg-[#253443] border border-slate-700/50 rounded-2xl text-[#A0AEC0] text-xs font-satoshi-regular">
-            No se encontraron clientes que coincidan con la búsqueda o filtro seleccionado.
-          </div>
-        )}
-      </div>
+              {clientesFiltrados.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-[#A0AEC0]">No se encontraron clientes registrados.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* MODAL CREAR / EDITAR CLIENTE */}
       {showModal && (
@@ -781,7 +894,7 @@ export default function ClientesPage() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
             <div className="flex justify-between items-center mb-6 border-b border-slate-700/60 pb-3">
-              <h3 className="text-lg font-satoshi-black text-white uppercase">Carga Masiva de Clientes</h3>
+              <h3 className="text-lg font-satoshi-black text-white uppercase tracking-wide">CARGA MASIVA DE CLIENTES</h3>
               <button onClick={() => setShowModalMasivo(false)} className="text-slate-400 hover:text-white transition">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -790,47 +903,58 @@ export default function ClientesPage() {
             </div>
 
             <form onSubmit={handleProcesarCargaMasivaClientes} className="space-y-4">
-              <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 text-xs text-slate-300 space-y-2">
+              {/* PASO 1: DESCARGA DE PLANTILLA */}
+              <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 text-xs text-slate-300 space-y-3">
                 <p className="font-satoshi-black text-white">PASO 1: Descarga la plantilla estructurada</p>
-                <p className="text-[11px] text-[#A0AEC0]">Soporta Nombre, Cédula/NIT, Tipo de Cliente, Teléfono, Correo y Ciudad.</p>
+                <p className="text-[11px] text-[#A0AEC0] leading-relaxed">
+                  Soporta Nombre, Cédula/NIT, Tipo de Cliente, Teléfono, Correo y Ciudad.
+                </p>
                 <button 
                   type="button"
                   onClick={handleDescargarPlantillaClientes}
-                  className="bg-[#6884C5] text-white font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase shadow hover:bg-[#5772b0] transition flex items-center gap-1.5"
+                  className="bg-[#6884C5] hover:bg-[#5772b0] text-white font-satoshi-black px-4 py-2.5 rounded-xl text-xs uppercase shadow transition flex items-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  <span>Descargar Plantilla CSV</span>
+                  <span>DESCARGAR PLANTILLA CSV</span>
                 </button>
               </div>
 
-              <div className="border-2 border-dashed border-slate-700/80 rounded-xl p-6 text-center space-y-2 bg-[#1D2935]">
+              {/* PASO 2: SELECCIÓN DE ARCHIVO CON BORDES DISCONTINUOS */}
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-slate-700/80 rounded-xl p-6 text-center space-y-2 bg-[#1D2935] cursor-pointer hover:border-[#0DE8C0]/60 transition"
+              >
                 <p className="font-satoshi-black text-xs text-white">PASO 2: Adjunta tu archivo (.csv)</p>
+                <p className="text-xs text-[#A0AEC0]">
+                  {fileMasivo ? `📄 ${fileMasivo.name}` : 'Seleccionar archivo Ningún archivo seleccionado'}
+                </p>
                 <input 
                   type="file" 
                   ref={fileInputRef}
                   accept=".csv"
                   onChange={(e) => setFileMasivo(e.target.files ? e.target.files[0] : null)}
-                  className="text-xs text-[#A0AEC0]"
+                  className="hidden"
                   required
                 />
               </div>
 
+              {/* ACCIONES Y BOTÓN VERDE/TURQUESA DE ACCIÓN */}
               <div className="flex gap-3 pt-4 border-t border-slate-700/60">
                 <button 
                   type="button" 
                   onClick={() => setShowModalMasivo(false)}
-                  className="flex-1 bg-[#1D2935] text-slate-300 font-satoshi-black py-3 rounded-xl text-xs uppercase"
+                  className="flex-1 bg-[#1D2935] text-slate-300 font-satoshi-black py-3 rounded-xl text-xs uppercase hover:bg-slate-800 transition"
                 >
-                  Cancelar
+                  CANCELAR
                 </button>
                 <button 
                   type="submit" 
                   disabled={loadingMasivo || !fileMasivo}
-                  className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5 transition"
                 >
-                  {loadingMasivo ? 'Importando...' : 'Procesar e Indexar'}
+                  {loadingMasivo ? 'PROCESANDO...' : 'PROCESAR E INDEXAR'}
                 </button>
               </div>
             </form>
