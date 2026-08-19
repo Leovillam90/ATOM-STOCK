@@ -166,6 +166,11 @@ export default function VendedoresPage() {
            String(u.rol || '').toLowerCase().includes(q);
   });
 
+  // Conteo por roles para métricas
+  const totalActivosCount = usuarios.length;
+  const vendedoresCount = usuarios.filter(u => u.rol === 'VENDEDOR').length;
+  const gerentesCount = usuarios.filter(u => u.rol === 'GERENTE_BODEGA').length;
+
   return (
     <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">
       
@@ -198,67 +203,67 @@ export default function VendedoresPage() {
         </button>
       </div>
 
-      {/* METRICAS SUPERIORES */}
+      {/* METRICAS SUPERIORES CON ALTURA FLEXIBLE Y JERARQUÍA CORREGIDA */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36">
+        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3">
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
               TOTAL USUARIOS ACTIVOS
             </span>
-            <div className="w-8 h-8 rounded-full bg-[#0DE8C0]/10 flex items-center justify-center text-[#0DE8C0]">
+            <div className="w-8 h-8 rounded-full bg-[#0DE8C0]/10 flex items-center justify-center text-[#0DE8C0] shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </div>
           </div>
-          <div className="my-1">
-            <span className="text-4xl font-black text-white font-satoshi-black">
-              {usuarios.length}
+          <div>
+            <span className={`text-4xl font-black font-satoshi-black tracking-tight ${totalActivosCount > 0 ? 'text-white drop-shadow-sm' : 'text-slate-500'}`}>
+              {totalActivosCount}
             </span>
           </div>
-          <p className="text-xs text-[#A0AEC0] font-satoshi-regular truncate">
+          <p className="text-xs text-[#A0AEC0] font-satoshi-regular leading-tight">
             Cuentas con credenciales de acceso al ERP
           </p>
         </div>
 
-        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36">
+        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3">
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-satoshi-black text-[#6884C5] uppercase tracking-wider">
               CAJEROS / VENDEDORES
             </span>
-            <div className="w-8 h-8 rounded-full bg-[#6884C5]/10 flex items-center justify-center text-[#6884C5]">
+            <div className="w-8 h-8 rounded-full bg-[#6884C5]/10 flex items-center justify-center text-[#6884C5] shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
               </svg>
             </div>
           </div>
-          <div className="my-1">
-            <span className="text-4xl font-black text-white font-satoshi-black">
-              {usuarios.filter(u => u.rol === 'VENDEDOR').length}
+          <div>
+            <span className={`text-4xl font-black font-satoshi-black tracking-tight ${vendedoresCount > 0 ? 'text-white drop-shadow-sm' : 'text-slate-500'}`}>
+              {vendedoresCount}
             </span>
           </div>
-          <p className="text-xs text-[#A0AEC0] font-satoshi-regular truncate">
+          <p className="text-xs text-[#A0AEC0] font-satoshi-regular leading-tight">
             Asignados a cobro POS y atención comercial
           </p>
         </div>
 
-        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36">
+        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[9.5rem] space-y-3">
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-satoshi-black text-[#C81FDA] uppercase tracking-wider">
               GERENTES DE BODEGA
             </span>
-            <div className="w-8 h-8 rounded-full bg-[#C81FDA]/10 flex items-center justify-center text-[#C81FDA]">
+            <div className="w-8 h-8 rounded-full bg-[#C81FDA]/10 flex items-center justify-center text-[#C81FDA] shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
             </div>
           </div>
-          <div className="my-1">
-            <span className="text-4xl font-black text-white font-satoshi-black">
-              {usuarios.filter(u => u.rol === 'GERENTE_BODEGA').length}
+          <div>
+            <span className={`text-4xl font-black font-satoshi-black tracking-tight ${gerentesCount > 0 ? 'text-white drop-shadow-sm' : 'text-slate-500'}`}>
+              {gerentesCount}
             </span>
           </div>
-          <p className="text-xs text-[#A0AEC0] font-satoshi-regular truncate">
+          <p className="text-xs text-[#A0AEC0] font-satoshi-regular leading-tight">
             Encargados de control de stock e inventario
           </p>
         </div>
@@ -280,7 +285,7 @@ export default function VendedoresPage() {
         </div>
       </div>
 
-      {/* TABLA DE USUARIOS DEL EQUIPO */}
+      {/* TABLA DE USUARIOS DEL EQUIPO CON LEGIBILIDAD AUMENTADA */}
       <div className="bg-[#253443] border border-slate-700/50 rounded-2xl shadow-xl overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -310,7 +315,8 @@ export default function VendedoresPage() {
                       </div>
                       <div>
                         <div className="font-satoshi-black text-white text-sm">{u.nombre}</div>
-                        <div className="font-mono text-[11px] text-[#A0AEC0]">{u.user}</div>
+                        {/* LUMINOSIDAD Y CONTRASTE MEJORADO EN EL CORREO/USUARIO */}
+                        <div className="font-mono text-xs text-slate-300">{u.user}</div>
                       </div>
                     </div>
                   </td>
