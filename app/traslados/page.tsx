@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, onSnapshot, doc, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import '@/app/globals.css';
 
@@ -27,6 +27,10 @@ export default function TrasladosPage() {
   const [prodSeleccionado, setProdSeleccionado] = useState('');
   const [cantSeleccionada, setCantSeleccionada] = useState<number | ''>('');
 
+  // Estados para el Buscador de Productos Customizado
+  const [isProdDropdownOpen, setIsProdDropdownOpen] = useState(false);
+  const [searchProd, setSearchProd] = useState('');
+
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -49,6 +53,35 @@ export default function TrasladosPage() {
 
     return () => { unsubTras(); unsubSuc(); unsubProd(); };
   }, [userAuth]);
+
+  // 🛡️ Filtrar sedes de origen según el rol
+  const sedesOrigenPermitidas = useMemo(() => {
+    if (!userAuth) return [];
+    if (userAuth.rol === 'ADMIN' || userAuth.rol === 'GERENTE_BODEGA') {
+      return sucursales.filter(s => s.estado !== 'INACTIVA');
+    }
+    
+    // Si es VENDEDOR, solo ve sus sedes asignadas
+    let asignadas = Array.isArray(userAuth.sedes_asignadas) 
+      ? userAuth.sedes_asignadas 
+      : (userAuth.id_sucursal ? [userAuth.id_sucursal] : []);
+      
+    return sucursales.filter(s => s.estado !== 'INACTIVA' && asignadas.includes(s.id_sucursal));
+  }, [sucursales, userAuth]);
+
+  // Lógica del buscador de productos custom
+  const productosBusqueda = useMemo(() => {
+    const term = searchProd.toLowerCase().trim();
+    return productos.filter(p => {
+      // Solo mostrar productos que tengan stock > 0 en la sede origen (si hay origen seleccionado)
+      const disp = origen ? Number(p.stock?.[origen] || 0) : 0;
+      if (origen && disp <= 0) return false;
+
+      return String(p.nombre || '').toLowerCase().includes(term) || 
+             String(p.sku || '').toLowerCase().includes(term);
+    });
+  }, [productos, searchProd, origen]);
+
 
   // ==========================================
   // LÓGICA DEL CARRITO DE TRASLADO
@@ -245,7 +278,14 @@ export default function TrasladosPage() {
 
         <button
           type="button"
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setOrigen('');
+            setDestino('');
+            setItemsTraslado([]);
+            setProdSeleccionado('');
+            setIsProdDropdownOpen(false);
+            setShowModal(true);
+          }}
           className="bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black px-6 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg flex items-center gap-2"
         >
           <svg className="w-4 h-4 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -361,9 +401,9 @@ export default function TrasladosPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-satoshi-black text-slate-400 uppercase mb-1">Bodega de Origen (Resta)</label>
-                <select className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2.5 text-xs text-white" value={origen} onChange={e => setOrigen(e.target.value)}>
+                <select className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2.5 text-xs text-white" value={origen} onChange={e => { setOrigen(e.target.value); setProdSeleccionado(''); }}>
                   <option value="">Selecciona origen...</option>
-                  {sucursales.filter(s => s.estado !== 'INACTIVA').map(s => <option key={s.id_sucursal} value={s.id_sucursal}>{s.nombre}</option>)}
+                  {sedesOrigenPermitidas.map(s => <option key={s.id_sucursal} value={s.id_sucursal}>{s.nombre}</option>)}
                 </select>
               </div>
               <div>
@@ -375,38 +415,105 @@ export default function TrasladosPage() {
               </div>
             </div>
 
-            {/* CARRITO DE TRASLADO */}
+            {/* CARRITO DE TRASLADO CON BUSCADOR INTELIGENTE */}
             <div className="bg-[#1D2935] p-4 rounded-xl border border-slate-700 space-y-3">
               <label className="block text-[10px] font-satoshi-black text-slate-400 uppercase">Agregar Productos</label>
-              <div className="flex gap-2">
-                <select className="flex-1 bg-[#253443] border border-slate-700 rounded-lg p-2 text-xs text-white" value={prodSeleccionado} onChange={e => setProdSeleccionado(e.target.value)}>
-                  <option value="">Seleccionar SKU...</option>
-                  {productos.filter(p => !origen || Number(p.stock?.[origen] || 0) > 0).map(p => (
-                    <option key={p.sku} value={p.sku}>{p.nombre} (Disp: {p.stock?.[origen] || 0})</option>
-                  ))}
-                </select>
-                <input type="number" min="1" placeholder="Cant." className="w-20 bg-[#253443] border border-slate-700 rounded-lg p-2 text-xs text-center text-white font-mono" value={cantSeleccionada} onChange={e => setCantSeleccionada(Number(e.target.value))} />
-                <button type="button" onClick={handleAddItem} className="bg-[#0DE8C0] text-[#1D2935] px-3 rounded-lg font-bold">+</button>
+              
+              <div className="flex gap-2 relative">
+                
+                {/* BUSCADOR CUSTOMIZADO */}
+                <div className="relative flex-1">
+                  <div 
+                    onClick={() => {
+                      if (!origen) return alert("Selecciona la bodega de origen primero");
+                      setIsProdDropdownOpen(!isProdDropdownOpen);
+                    }}
+                    className={`w-full bg-[#253443] border border-slate-700 rounded-lg p-2 text-xs text-white flex justify-between items-center cursor-pointer ${!origen ? 'opacity-50' : 'hover:border-[#0DE8C0]'}`}
+                  >
+                    <span className="truncate">
+                      {prodSeleccionado 
+                        ? (() => {
+                            const p = productos.find(x => x.sku === prodSeleccionado);
+                            return p ? `${p.nombre} (Disp: ${p.stock?.[origen] || 0})` : 'Seleccionar Producto...';
+                          })()
+                        : 'Buscar por Nombre o SKU...'}
+                    </span>
+                    <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                  </div>
+
+                  {isProdDropdownOpen && origen && (
+                    <div className="absolute z-50 w-full mt-1 bg-[#1a2332] border border-slate-600 rounded-lg shadow-2xl flex flex-col max-h-56 overflow-hidden">
+                      <div className="p-2 border-b border-slate-700">
+                        <input
+                          type="text"
+                          placeholder="Escribe para filtrar..."
+                          className="w-full bg-[#253443] border border-slate-700 rounded-md p-1.5 text-xs text-white focus:outline-none focus:border-[#0DE8C0]"
+                          value={searchProd}
+                          onChange={(e) => setSearchProd(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                      <div className="overflow-y-auto">
+                        {productosBusqueda.map(p => (
+                          <div
+                            key={p.sku}
+                            className="p-2.5 text-xs border-b border-slate-800/50 hover:bg-[#253443] cursor-pointer transition"
+                            onClick={() => {
+                              setProdSeleccionado(p.sku);
+                              setIsProdDropdownOpen(false);
+                              setSearchProd('');
+                            }}
+                          >
+                            <div className="font-satoshi-black text-white">{p.nombre}</div>
+                            <div className="text-[10px] text-[#0DE8C0] mt-0.5">
+                              SKU: {p.sku} | <span className="font-mono text-slate-300">Disp: {p.stock?.[origen] || 0} unds</span>
+                            </div>
+                          </div>
+                        ))}
+                        {productosBusqueda.length === 0 && (
+                          <div className="p-4 text-xs text-slate-500 text-center">No hay productos disponibles en esta sede.</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* CAMPO DE CANTIDAD (SIN FLECHAS) */}
+                <input 
+                  type="number" 
+                  min="1" 
+                  placeholder="Cant." 
+                  className="w-20 bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] focus:outline-none rounded-lg p-2 text-xs text-center text-white font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none shrink-0" 
+                  value={cantSeleccionada} 
+                  onChange={e => setCantSeleccionada(Number(e.target.value))} 
+                />
+                
+                <button type="button" onClick={handleAddItem} className="bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] px-4 rounded-lg font-black transition shrink-0">
+                  +
+                </button>
               </div>
 
               {/* LISTA A ENVIAR */}
               <div className="mt-4 space-y-2">
                 {itemsTraslado.map((it, i) => (
-                  <div key={i} className="flex justify-between items-center bg-[#253443] p-2 rounded-lg text-xs border border-slate-700/50">
-                    <span className="text-white truncate pr-2">{it.nombre}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[#0DE8C0] font-mono">{it.cantidad} unds</span>
-                      <button onClick={() => handleRemoveItem(it.sku)} className="text-red-400 hover:text-red-300">✕</button>
+                  <div key={i} className="flex justify-between items-center bg-[#253443] p-2.5 rounded-lg text-xs border border-slate-700/50">
+                    <span className="text-white font-satoshi-black truncate pr-2">{it.nombre}</span>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-[#0DE8C0] font-mono font-bold">{it.cantidad} unds</span>
+                      <button onClick={() => handleRemoveItem(it.sku)} className="text-red-400 hover:bg-red-950 p-1 rounded transition">✕</button>
                     </div>
                   </div>
                 ))}
+                {itemsTraslado.length === 0 && (
+                  <p className="text-[10px] text-slate-500 italic text-center py-2">No hay productos en el envío.</p>
+                )}
               </div>
             </div>
 
             {/* BOTONES */}
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setShowModal(false)} className="flex-1 bg-[#1D2935] text-slate-300 py-3 rounded-xl text-xs uppercase font-satoshi-black border border-slate-700">Cancelar</button>
-              <button onClick={handleGenerarTraslado} disabled={loading || itemsTraslado.length === 0} className="flex-1 bg-[#0DE8C0] text-[#1D2935] py-3 rounded-xl text-xs uppercase font-satoshi-black disabled:opacity-50">
+              <button onClick={() => setShowModal(false)} className="flex-1 bg-[#1D2935] hover:bg-slate-800 text-slate-300 py-3 rounded-xl text-xs uppercase font-satoshi-black border border-slate-700 transition">Cancelar</button>
+              <button onClick={handleGenerarTraslado} disabled={loading || itemsTraslado.length === 0} className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] py-3 rounded-xl text-xs uppercase font-satoshi-black disabled:opacity-50 transition shadow-lg">
                 {loading ? 'Generando...' : 'Generar Traslado'}
               </button>
             </div>
