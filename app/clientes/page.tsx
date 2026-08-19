@@ -365,10 +365,8 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      {/* METRICAS SUPERIORES (GRID DE 3 COLUMNAS IDÉNTICAS) */}
+      {/* METRICAS SUPERIORES */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        
-        {/* TARJETA 1: TOTAL CLIENTES */}
         <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between relative overflow-hidden">
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
@@ -393,7 +391,6 @@ export default function ClientesPage() {
           </p>
         </div>
 
-        {/* TARJETA 2: PERSONAS NATURALES */}
         <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between relative overflow-hidden">
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-satoshi-black text-[#6884C5] uppercase tracking-wider">
@@ -418,7 +415,6 @@ export default function ClientesPage() {
           </p>
         </div>
 
-        {/* TARJETA 3: CLIENTES JURÍDICOS */}
         <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between relative overflow-hidden">
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-satoshi-black text-[#C81FDA] uppercase tracking-wider">
@@ -442,13 +438,10 @@ export default function ClientesPage() {
             Facturación comercial con NIT
           </p>
         </div>
-
       </div>
 
-      {/* BARRA DE BÚSQUEDA REDUCIDA + FILTROS RÁPIDOS (PILLS) */}
+      {/* BARRA DE BÚSQUEDA Y FILTROS */}
       <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-3 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
-        
-        {/* BUSCADOR COMPACTO */}
         <div className="relative w-full md:w-80">
           <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -462,7 +455,6 @@ export default function ClientesPage() {
           />
         </div>
 
-        {/* PILLS DE FILTRADO RÁPIDO */}
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
           <button
             type="button"
@@ -500,7 +492,6 @@ export default function ClientesPage() {
             Empresas ({totalEmpresas})
           </button>
         </div>
-
       </div>
 
       {/* GRID DE CLIENTES (3 COLUMNAS) */}
@@ -515,7 +506,6 @@ export default function ClientesPage() {
               className="group relative bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col justify-between transition-all duration-300 hover:border-slate-600"
             >
               <div>
-                {/* ENCABEZADO TARJETA CON MENÚ DE TRES PUNTOS */}
                 <div className="flex justify-between items-start mb-3">
                   <span className={`text-[10px] font-satoshi-black uppercase px-2.5 py-1 rounded-lg tracking-wider ${
                     isJuridico 
@@ -525,7 +515,6 @@ export default function ClientesPage() {
                     {isJuridico ? 'Empresa (NIT)' : 'Persona Natural'}
                   </span>
 
-                  {/* BARRITA DE OPCIONES SECUNDARIAS (⋮) */}
                   <div className="relative">
                     <button
                       type="button"
@@ -568,7 +557,6 @@ export default function ClientesPage() {
                   {c.nombre || c.NOMBRE}
                 </h3>
 
-                {/* NIT / DOCUMENTO MONOSPACED CON COPIADO RÁPIDO */}
                 <div className="flex items-center gap-2 mt-1 mb-4">
                   <span className="font-mono text-[11px] text-[#A0AEC0] bg-[#1D2935] px-2 py-0.5 rounded border border-slate-700/60">
                     NIT/Doc: {c.nit || c.NIT || 'CF_GENERAL'}
@@ -583,7 +571,6 @@ export default function ClientesPage() {
                   </button>
                 </div>
 
-                {/* DATOS DE DIRECCIÓN Y CONTACTO CON ALTO CONTRASTE (#A0AEC0) */}
                 <div className="space-y-2 text-xs text-[#A0AEC0] font-satoshi-regular">
                   <div className="flex items-center gap-2">
                     <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -609,7 +596,6 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              {/* BOTÓN PRINCIPAL DE ACCIÓN */}
               <div className="mt-6 pt-4 border-t border-slate-700/60 flex items-center justify-between">
                 {telClean ? (
                   <a
