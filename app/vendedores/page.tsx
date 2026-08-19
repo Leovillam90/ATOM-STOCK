@@ -18,7 +18,8 @@ export default function VendedoresPage() {
   const [nombre, setNombre] = useState('');
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
-  const [rol, setRol] = useState<'ADMIN' | 'GERENTE_BODEGA' | 'VENDEDOR'>('VENDEDOR');
+  // SE AGREGÓ 'CONTABLE' A LOS TIPOS PERMITIDOS
+  const [rol, setRol] = useState<'ADMIN' | 'GERENTE_BODEGA' | 'VENDEDOR' | 'CONTABLE'>('VENDEDOR');
   
   // ASIGNACIÓN DE MÚLTIPLES SEDES
   const [sedesAsignadas, setSedesAsignadas] = useState<string[]>([]);
@@ -192,7 +193,7 @@ export default function VendedoresPage() {
             Equipo / Vendedores
           </h1>
           <p className="text-xs text-[#A0AEC0] mt-1 font-satoshi-regular max-w-xl">
-            Asigna roles de Gerente o Vendedor y otorga permisos de gestión en múltiples sedes.
+            Asigna roles de Gerente, Vendedor o Contable y otorga permisos de gestión en múltiples sedes.
           </p>
         </div>
 
@@ -326,10 +327,14 @@ export default function VendedoresPage() {
                   </td>
 
                   <td className="p-4">
+                    {/* AQUÍ SE AGREGÓ EL COLOR AZUL PARA EL ROL CONTABLE */}
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-satoshi-black ${
-                      u.rol === 'GERENTE_BODEGA' ? 'bg-amber-950/80 text-amber-300 border border-amber-800/40' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40'
+                      u.rol === 'GERENTE_BODEGA' ? 'bg-amber-950/80 text-amber-300 border border-amber-800/40' : 
+                      u.rol === 'CONTABLE' ? 'bg-blue-950/80 text-blue-300 border border-blue-800/40' :
+                      'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40'
                     }`}>
-                      {u.rol === 'GERENTE_BODEGA' ? 'GERENTE DE BODEGA' : 'VENDEDOR POS'}
+                      {u.rol === 'GERENTE_BODEGA' ? 'GERENTE DE BODEGA' : 
+                       u.rol === 'CONTABLE' ? 'ÁREA CONTABLE' : 'VENDEDOR POS'}
                     </span>
                   </td>
 
@@ -441,6 +446,7 @@ export default function VendedoresPage() {
                 />
               </div>
 
+              {/* AQUÍ SE AGREGÓ EL ROL CONTABLE AL DESPLEGABLE */}
               <div>
                 <label className="block text-xs font-satoshi-black text-white uppercase tracking-wider mb-1">
                   Rol y Nivel de Permisos
@@ -451,7 +457,8 @@ export default function VendedoresPage() {
                   onChange={(e: any) => setRol(e.target.value)}
                 >
                   <option value="VENDEDOR" className="bg-[#1D2935] text-white">🛒 Vendedor / Cajero POS (Caja Local)</option>
-                  <option value="GERENTE_BODEGA" className="bg-[#1D2935] text-white">📦 Gerente de Bodega (Inventario & WMS)</option>
+                  <option value="GERENTE_BODEGA" className="bg-[#1D2935] text-white">📦 Gerente de Bodega (Inventario)</option>
+                  <option value="CONTABLE" className="bg-[#1D2935] text-blue-300">📊 Área Contable (Facturación y Reportes)</option>
                 </select>
               </div>
 
