@@ -26,25 +26,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // Tooltip Informativo para Conexiones E-Commerce
   const [showEcommerceTooltip, setShowEcommerceTooltip] = useState(false);
 
-  // LISTA DE PAÍSES E INDICATIVOS LATAM
+  // LISTA EXCLUSIVA DE PAÍSES E INDICATIVOS LATAM
   const paisesLatam = [
     { codigo: '+57', nombre: 'Colombia (+57)', bandera: '🇨🇴' },
-    { codigo: '+52', nombre: 'México (+52)', bandera: '🇲🇽' },
-    { codigo: '+54', nombre: 'Argentina (+54)', bandera: '🇦🇷' },
-    { codigo: '+56', nombre: 'Chile (+56)', bandera: '🇨🇱' },
-    { codigo: '+51', nombre: 'Perú (+51)', bandera: '🇵🇪' },
     { codigo: '+593', nombre: 'Ecuador (+593)', bandera: '🇪🇨' },
-    { codigo: '+58', nombre: 'Venezuela (+58)', bandera: '🇻🇪' },
-    { codigo: '+507', nombre: 'Panamá (+507)', bandera: '🇵🇦' },
-    { codigo: '+506', nombre: 'Costa Rica (+506)', bandera: '🇨🇷' },
-    { codigo: '+1', nombre: 'Rep. Dominicana (+1)', bandera: '🇩🇴' },
-    { codigo: '+502', nombre: 'Guatemala (+502)', bandera: '🇬🇹' },
-    { codigo: '+503', nombre: 'El Salvador (+503)', bandera: '🇸🇻' },
-    { codigo: '+504', nombre: 'Honduras (+504)', bandera: '🇭🇳' },
-    { codigo: '+505', nombre: 'Nicaragua (+505)', bandera: '🇳🇮' },
-    { codigo: '+591', nombre: 'Bolivia (+591)', bandera: '🇧🇴' },
+    { codigo: '+52', nombre: 'México (+52)', bandera: '🇲🇽' },
     { codigo: '+595', nombre: 'Paraguay (+595)', bandera: '🇵🇾' },
-    { codigo: '+598', nombre: 'Uruguay (+598)', bandera: '🇺🇾' },
+    { codigo: '+51', nombre: 'Perú (+51)', bandera: '🇵🇪' },
+    { codigo: '+56', nombre: 'Chile (+56)', bandera: '🇨🇱' },
+    { codigo: '+507', nombre: 'Panamá (+507)', bandera: '🇵🇦' },
+    { codigo: '+502', nombre: 'Guatemala (+502)', bandera: '🇬🇹' },
+    { codigo: '+55', nombre: 'Brasil (+55)', bandera: '🇧🇷' },
+    { codigo: '+54', nombre: 'Argentina (+54)', bandera: '🇦🇷' },
+    { codigo: '+58', nombre: 'Venezuela (+58)', bandera: '🇻🇪' },
   ];
 
   // FORMULARIO Y ESTADOS DE AUTENTICACIÓN
@@ -101,7 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // MANEJADOR UNIFICADO DE AUTENTICACIÓN Y REGISTRO (CON GARANTÍA DE ROL ADM)
+  // MANEJADOR UNIFICADO DE AUTENTICACIÓN Y REGISTRO
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userField || !passField) return alert('Ingresa tu correo / usuario y contraseña.');
@@ -112,24 +106,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     try {
       if (isRegister) {
         // ==========================================
-        // 1. REGISTRO DE NUEVA EMPRESA -> ROL OBLIGATORIO: ADMIN
+        // 1. REGISTRO DE NUEVA EMPRESA Y ADMIN (0 SEDES)
         // ==========================================
         if (!nombreField.trim() || !telefonoField.trim()) {
           setLoadingAction(false);
           return alert('Por favor ingresa el nombre de la empresa y tu número de teléfono / celular.');
         }
 
+        // Limpieza de caracteres no numéricos para evitar duplicaciones (+57 +57...)
         const numLimpio = telefonoField.trim().replace(/\D/g, '');
-        const telefonoCompleto = `${indicativoField} ${numLimpio}`;
 
         const idCuenta = `CTA_${Date.now().toString().slice(-8)}`;
         const idUsuario = `USR_${Date.now().toString().slice(-8)}`;
 
-        // A. Crear Cuenta Corporativa con Rol Administrador
+        // A. Crear Cuenta Corporativa
         await setDoc(doc(db, 'cuentas', idCuenta), {
           id_cuenta: idCuenta,
           nombre_empresa: nombreField.trim(),
-          telefono_contacto: telefonoCompleto,
+          telefono_contacto: numLimpio,
           indicativo_pais: indicativoField,
           email_contacto: term,
           rol_creador: 'ADMIN',
@@ -143,12 +137,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           id_usuario: idUsuario,
           id_sucursal: '',
           nombre: nombreField.trim(),
-          telefono: telefonoCompleto,
+          telefono: numLimpio,
           indicativo_pais: indicativoField,
           user: term,
           email: term,
           pass: passField.trim(),
-          rol: 'ADMIN', // <-- ROL SUPER ADMINISTRADOR
+          rol: 'ADMIN',
           estado: 'ACTIVO',
           sedes_asignadas: [],
           fecha_creacion: new Date().toISOString()
@@ -160,9 +154,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         const sessionObj = {
           id_usuario: idUsuario,
           nombre: nombreField.trim(),
-          telefono: telefonoCompleto,
+          telefono: numLimpio,
           indicativo_pais: indicativoField,
-          rol: 'ADMIN', // <-- FORZADO A ADMIN
+          rol: 'ADMIN',
           user: term,
           id_cuenta: idCuenta,
           empresa: nombreField.trim(),
@@ -212,13 +206,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }
         }
 
-        // Si no tiene rol especificado, por seguridad se asigna ADMIN
         const userRol = String(userData.rol || 'ADMIN').toUpperCase();
+        const numLimpioUser = String(userData.telefono || '').replace(/^\+\d+\s*/, '').trim();
 
         const sessionObj = {
           id_usuario: userDoc.id,
           nombre: userData.nombre || 'Usuario ATOM',
-          telefono: userData.telefono || '',
+          telefono: numLimpioUser,
           indicativo_pais: userData.indicativo_pais || '+57',
           rol: userRol,
           user: userData.user || term,
@@ -526,7 +520,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                           <select
                             value={indicativoField}
                             onChange={(e) => setIndicativoField(e.target.value)}
-                            className="bg-[#111823] text-xs font-mono font-bold text-[#0DE8C0] rounded-lg p-1.5 border border-slate-700 focus:outline-none shrink-0"
+                            className="bg-[#111823] text-xs font-mono font-bold text-[#0DE8C0] rounded-lg p-1.5 border border-slate-700 focus:outline-none shrink-0 cursor-pointer"
                           >
                             {paisesLatam.map((p) => (
                               <option key={p.codigo} value={p.codigo} className="bg-[#111823] text-white">
