@@ -280,7 +280,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA'],
       badge: numSucursales === 0 ? (
         <span className="bg-[#FF0055] text-white text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ml-auto shrink-0 inline-block text-center select-none shadow-none">
-          ! INGRESAR
+          + AÑADIR
         </span>
       ) : null,
       icon: (
@@ -312,7 +312,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       rolesPermitidos: ['ADMIN', 'GERENTE_BODEGA', 'VENDEDOR'],
       badge: numProductos === 0 ? (
         <span className="bg-[#FF0055] text-white text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ml-auto shrink-0 inline-block text-center select-none shadow-none">
-          SIN DATOS
+          + AÑADIR
         </span>
       ) : null,
       icon: (
