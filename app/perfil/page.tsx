@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, writeBatch } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
-import { db, auth } from '@/lib/firebase'; // <-- Importamos auth de Firebase
+import { db, auth } from '@/lib/firebase';
+import { MONEDAS } from '@/lib/moneda';
 import '@/app/globals.css';
 
 export default function PerfilPage() {
@@ -44,6 +45,7 @@ export default function PerfilPage() {
   const [nit, setNit] = useState('');
   const [regimenFiscal, setRegimenFiscal] = useState('RESPONSABLE_IVA');
   const [pais, setPais] = useState('Colombia');
+  const [monedaOficial, setMonedaOficial] = useState('COP'); // MONEDA OFICIAL
   const [ciudad, setCiudad] = useState('');
   const [telefonoCorp, setTelefonoCorp] = useState('');
   const [direccionFiscal, setDireccionFiscal] = useState('');
@@ -66,7 +68,6 @@ export default function PerfilPage() {
   };
 
   useEffect(() => {
-    // Nota: Mantenemos la llave 'atom_user_session' para no romper sesiones activas
     const savedUser = localStorage.getItem('atom_user_session');
     if (savedUser) {
       try {
@@ -92,6 +93,7 @@ export default function PerfilPage() {
       let telC = '';
       let dirF = '';
       let eFact = '';
+      let monOf = session.moneda_oficial || 'COP';
 
       if (session.id_usuario) {
         const uDoc = await getDoc(doc(db, 'usuarios', session.id_usuario));
@@ -115,6 +117,7 @@ export default function PerfilPage() {
           telC = fd.telefono_corporativo || '';
           dirF = fd.direccion_fiscal || '';
           eFact = fd.email_facturacion || '';
+          monOf = fd.moneda_oficial || monOf;
         } else {
           // Fallback
           const cDoc = await getDoc(doc(db, 'cuentas', session.id_cuenta));
@@ -122,6 +125,7 @@ export default function PerfilPage() {
             const cd = cDoc.data();
             rSoc = cd.nombre_empresa || cd.razon_social || rSoc;
             nDoc = cd.nit || cd.documento_fiscal || '';
+            monOf = cd.moneda_oficial || monOf;
           }
         }
       }
@@ -133,6 +137,7 @@ export default function PerfilPage() {
       setRazonSocial(rSoc);
       setNit(nDoc);
       setRegimenFiscal(regF);
+      setMonedaOficial(monOf);
       setCiudad(cty);
       setTelefonoCorp(telC);
       setDireccionFiscal(dirF);
@@ -146,6 +151,7 @@ export default function PerfilPage() {
         razonSocial: rSoc,
         nit: nDoc,
         regimenFiscal: regF,
+        monedaOficial: monOf,
         ciudad: cty,
         telefonoCorp: telC,
         direccionFiscal: dirF,
@@ -170,6 +176,7 @@ export default function PerfilPage() {
       razonSocial !== originalData.razonSocial ||
       nit !== originalData.nit ||
       regimenFiscal !== originalData.regimenFiscal ||
+      monedaOficial !== originalData.monedaOficial ||
       ciudad !== originalData.ciudad ||
       telefonoCorp !== originalData.telefonoCorp ||
       direccionFiscal !== originalData.direccionFiscal ||
@@ -209,7 +216,7 @@ export default function PerfilPage() {
         await updatePassword(auth.currentUser, passNueva.trim());
       }
 
-      // 2. Actualizar usuario en Firestore (YA NO GUARDAMOS LA CONTRASEÑA)
+      // 2. Actualizar usuario en Firestore
       if (userAuth?.id_usuario) {
         const userUpdate: any = {
           nombre: nombre.trim(),
@@ -231,6 +238,7 @@ export default function PerfilPage() {
           nit: nit.trim(),
           regimen_fiscal: regimenFiscal,
           pais,
+          moneda_oficial: monedaOficial,
           ciudad: ciudad.trim(),
           telefono_corporativo: telefonoCorp.trim(),
           direccion_fiscal: direccionFiscal.trim(),
@@ -245,19 +253,21 @@ export default function PerfilPage() {
           const ctaRef = doc(db, 'cuentas', userAuth.id_cuenta);
           batch.set(ctaRef, {
             telefono_contacto: numLimpio,
-            indicativo_pais: prefijoPais
+            indicativo_pais: prefijoPais,
+            moneda_oficial: monedaOficial
           }, { merge: true });
         }
       }
 
-      await batch.commit(); // Ejecuta las 3 escrituras al mismo tiempo en Firestore
+      await batch.commit();
 
       const sessionObj = {
         ...userAuth,
         nombre: nombre.trim(),
         telefono: numLimpio,
         indicativo_pais: prefijoPais,
-        empresa: razonSocial.trim()
+        empresa: razonSocial.trim(),
+        moneda_oficial: monedaOficial
       };
       localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
       setUserAuth(sessionObj);
@@ -276,6 +286,7 @@ export default function PerfilPage() {
         razonSocial: razonSocial.trim(),
         nit: nit.trim(),
         regimenFiscal,
+        monedaOficial,
         ciudad: ciudad.trim(),
         telefonoCorp: telefonoCorp.trim(),
         direccionFiscal: direccionFiscal.trim(),
@@ -332,7 +343,7 @@ export default function PerfilPage() {
             }`}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 01-2-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             <span>Datos Legales y Fiscales</span>
             {activeTab === 'LEGALES' && (
@@ -527,6 +538,26 @@ export default function PerfilPage() {
                       <option value="REGIMEN_SIMPLE">Régimen Simple de Tributación (RST)</option>
                       <option value="GRAN_CONTRIBUYENTE">Gran Contribuyente</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
+                      Moneda Oficial de Operación *
+                    </label>
+                    <select
+                      className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 font-satoshi-black focus:outline-none cursor-pointer transition"
+                      value={monedaOficial}
+                      onChange={(e) => setMonedaOficial(e.target.value)}
+                    >
+                      {MONEDAS.map((m) => (
+                        <option key={m.codigo} value={m.codigo}>
+                          {m.nombre} ({m.simbolo})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[9px] text-gray-500 mt-1 italic">
+                      * Moneda principal para reportes, catálogo y simuladores.
+                    </p>
                   </div>
                 </div>
 
