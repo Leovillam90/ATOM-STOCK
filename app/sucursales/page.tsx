@@ -100,6 +100,53 @@ export default function SucursalesPage() {
     setShowModal(true);
   };
 
+  // ==========================================
+  // LÓGICA DE CREACIÓN EXCLUSIVA DE BODEGA DROKO
+  // ==========================================
+  const handleCrearBodegaDroko = async () => {
+    const primeraBodega = sucursales.find(s => s.tipo_sucursal === 'BODEGA' && !String(s.nombre).toUpperCase().includes('DROKO'));
+
+    if (primeraBodega) {
+      if (!confirm(`Se creará la "Bodega DROKO" usando los datos de la sede "${primeraBodega.nombre}". ¿Deseas continuar?`)) return;
+
+      setLoading(true);
+      try {
+        const idDroko = `SUC_DROKO_${Date.now().toString().slice(-6)}`;
+        const drokoObj = {
+          id_cuenta: userAuth.id_cuenta,
+          id_sucursal: idDroko,
+          nombre: `Bodega DROKO`,
+          tipo_sucursal: 'BODEGA',
+          direccion: primeraBodega.direccion || 'Dirección no especificada',
+          ciudad: primeraBodega.ciudad || 'Colombia',
+          telefono: primeraBodega.telefono || '',
+          encargado: 'Administrador Droko',
+          estado: 'ACTIVA',
+          fecha_actualizacion: new Date().toISOString()
+        };
+
+        await setDoc(doc(db, 'sucursales', idDroko), drokoObj, { merge: true });
+        alert('Bodega exclusiva para DROKO creada exitosamente.');
+      } catch (err: any) {
+        alert('Error al crear bodega Droko: ' + err.message);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Si no hay bodegas previas, abrimos el modal para que llene los datos
+      setEditingId(null);
+      setNombre('Bodega DROKO');
+      setTipoSucursal('BODEGA');
+      setDireccion('');
+      setCiudad('');
+      setTelefono('');
+      setEncargado('Administrador Droko');
+      setEstado('ACTIVA');
+      setShowModal(true);
+      alert('No se encontraron bodegas previas. Por favor, completa los datos de ubicación para la nueva Bodega DROKO.');
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) return alert('Ingresa el nombre de la sede o bodega.');
@@ -107,6 +154,7 @@ export default function SucursalesPage() {
     setLoading(true);
     try {
       const idSucFinal = editingId || `SUC_${Date.now().toString().slice(-6)}`;
+      const isoDate = new Date().toISOString();
 
       const sucObj = {
         id_cuenta: userAuth.id_cuenta,
@@ -118,11 +166,12 @@ export default function SucursalesPage() {
         telefono: telefono.trim(),
         encargado: encargado.trim() || 'Administrador General',
         estado,
-        fecha_actualizacion: new Date().toISOString()
+        fecha_actualizacion: isoDate
       };
 
       await setDoc(doc(db, 'sucursales', idSucFinal), sucObj, { merge: true });
       setShowModal(false);
+      alert('Sede guardada con éxito.');
     } catch (err: any) {
       console.error(err);
       alert('Error al guardar la sede: ' + err.message);
@@ -168,6 +217,12 @@ export default function SucursalesPage() {
     });
   }, [sucursales, searchQuery, tipoFiltro]);
 
+  // Validar si la Sede Actual en el Modal es una Sede DROKO Generada
+  const esBodegaDrokoIntocable = editingId?.includes('DROKO') || nombre.toUpperCase().includes('DROKO');
+  
+  // Validar si ya existe una bodega DROKO en la cuenta
+  const yaExisteBodegaDroko = sucursales.some(s => String(s.nombre).toUpperCase().includes('DROKO'));
+
   return (
     <div className="min-h-screen bg-[#F4F5F7] text-gray-800 p-6 md:p-10 font-sans relative pb-20">
       
@@ -188,17 +243,34 @@ export default function SucursalesPage() {
           </p>
         </div>
 
-        {/* BOTÓN ACCIÓN PRINCIPAL */}
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          className="bg-[#FFD800] hover:bg-[#FDCB13] text-[#222222] font-satoshi-black px-6 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center gap-2 shrink-0 font-bold"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
-          </svg>
-          <span>Nueva Sede / Bodega</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          
+          {/* BOTÓN CREAR BODEGA DROKO (SE OCULTA SI YA EXISTE) */}
+          {!yaExisteBodegaDroko && (
+            <button
+              type="button"
+              onClick={handleCrearBodegaDroko}
+              className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-satoshi-black px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center gap-2 font-bold"
+            >
+              <svg className="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              <span>Crear Bodega DROKO</span>
+            </button>
+          )}
+
+          {/* BOTÓN ACCIÓN PRINCIPAL */}
+          <button
+            type="button"
+            onClick={handleOpenCreate}
+            className="bg-[#FFD800] hover:bg-[#FDCB13] text-[#222222] font-satoshi-black px-6 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center gap-2 font-bold"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Nueva Sede / Bodega</span>
+          </button>
+        </div>
       </div>
 
       {/* METRICAS SUPERIORES CON ÍCONOS VECTORIALES 2D */}
@@ -470,7 +542,7 @@ export default function SucursalesPage() {
                 >
                   <span>Ver Detalle</span>
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7-7" />
                   </svg>
                 </button>
               </div>
@@ -511,12 +583,20 @@ export default function SucursalesPage() {
                 </label>
                 <input 
                   type="text"
-                  className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl p-3 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
+                  className={`w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl p-3 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition ${
+                    esBodegaDrokoIntocable ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                   placeholder="Ej: Sede Principal Cali / Bodega Centro"
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
+                  disabled={esBodegaDrokoIntocable}
                   required
                 />
+                {esBodegaDrokoIntocable && (
+                  <p className="text-[10px] text-amber-600 mt-1 italic font-satoshi-regular">
+                    El nombre de esta sede está protegido por integración e-commerce y no puede ser editado.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
