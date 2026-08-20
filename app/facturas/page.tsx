@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { formatearMonedaGlobal } from '@/lib/moneda';
 
 export default function FacturasPage() {
   const [userAuth, setUserAuth] = useState<any>(null);
@@ -24,8 +25,8 @@ export default function FacturasPage() {
   const [showModalDetail, setShowModalDetail] = useState(false);
   const [selectedFactura, setSelectedFactura] = useState<any>(null);
 
-  const formatoCOP = (v: number) => 
-    new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
+  // Moneda Oficial de la empresa configurada en Perfil
+  const monedaLocal = userAuth?.moneda_oficial || 'COP';
 
   const mesesDelAnio = [
     { id: 0, nombre: 'Enero' }, { id: 1, nombre: 'Febrero' }, { id: 2, nombre: 'Marzo' },
@@ -73,16 +74,12 @@ export default function FacturasPage() {
     return () => unsub();
   }, [userAuth]);
 
-  const esVendedor = userAuth?.rol === 'VENDEDOR';
-
   // RESETEAR A PÁGINA 1 CUANDO CAMBIAN LOS FILTROS
   useEffect(() => {
     setPaginaActual(1);
   }, [searchQuery, filtroEstado, mesFiltro, anioFiltro, ordenFecha]);
 
-  // ==========================================
-  // 🧠 RENDIMIENTO: LÓGICA MEMOIZADA
-  // ==========================================
+  // LÓGICA MEMOIZADA DE FILTROS Y MÉTRICAS
   const {
     facturasPaginadas,
     totalFacturasCount,
@@ -145,6 +142,7 @@ export default function FacturasPage() {
 
   const indiceInicial = (paginaActual - 1) * ventasPorPagina;
 
+  // EXPORTACIÓN CONTABLE CORREGIDA (DESGLOSA TODOS LOS ÍTEMS VENDIDOS)
   const handleExportarReporteFiscal = () => {
     if (!facturasParaExportar || facturasParaExportar.length === 0) {
       return alert('No hay comprobantes registrados en los filtros actuales para exportar.');
@@ -152,7 +150,7 @@ export default function FacturasPage() {
 
     const bom = '\uFEFF';
     let csvContent = 'SEP=;\n';
-    csvContent += 'NUM_COMPROBANTE;ORDEN_REF;FECHA_EMISION;TIPO_DOC;NIT_RUT;CLIENTE_NOMBRE;CORREO_CLIENTE;TELEFONO;DIRECCION;CIUDAD;RESPONSABILIDAD_FISCAL;PRODUCTO;CANTIDAD;PRECIO_UNITARIO;METODO_PAGO;CANAL_ORIGEN;SUBTOTAL;IVA_MONTO;TOTAL_CON_IMPUESTO;ESTADO_FISCAL\n';
+    csvContent += 'NUM_COMPROBANTE;ORDEN_REF;FECHA_EMISION;TIPO_DOC;NIT_RUT;CLIENTE_NOMBRE;CORREO_CLIENTE;TELEFONO;DIRECCION;CIUDAD;RESPONSABILIDAD_FISCAL;SKU;PRODUCTO;CANTIDAD;PRECIO_UNITARIO;METODO_PAGO;CANAL_ORIGEN;SUBTOTAL_GRAVABLE;IVA_MONTO;TOTAL_CON_IMPUESTO;ESTADO_FISCAL\n';
 
     facturasParaExportar.forEach(f => {
       const fNum = f.id_factura || 'N/A';
@@ -166,20 +164,25 @@ export default function FacturasPage() {
       const fDir = (f.cliente_direccion || 'N/A').replace(/;/g, ' ');
       const fCiu = (f.cliente_ciudad || 'Cali').replace(/;/g, ' ');
       const fResp = f.cliente_responsabilidad_fiscal || 'R-99-PN';
-
-      const primerItem = Array.isArray(f.items) && f.items.length > 0 ? f.items[0] : null;
-      const fProd = (primerItem?.nombre || 'Producto Múltiple').replace(/;/g, ' ');
-      const fCant = primerItem?.cantidad || 1;
-      const fPrecio = primerItem?.precio || f.total || 0;
-
       const fMetodo = f.metodo_pago || 'EFECTIVO';
       const fCanal = (f.vendedor_nombre || 'Vendedor Local').replace(/;/g, ' ');
-      const fSub = f.subtotal || f.total || 0;
-      const fIva = f.iva_monto || 0;
-      const fTot = f.total || 0;
       const fEst = f.estado || 'EMITIDA';
 
-      csvContent += `${fNum};${fOrden};${fFecha};${fTipoDoc};${fNit};${fCliente};${fMail};${fTel};${fDir};${fCiu};${fResp};${fProd};${fCant};${fPrecio};${fMetodo};${fCanal};${fSub};${fIva};${fTot};${fEst}\n`;
+      const items = Array.isArray(f.items) && f.items.length > 0 
+        ? f.items 
+        : [{ sku: 'N/A', nombre: 'Producto Múltiple', cantidad: 1, precio: f.total || 0 }];
+
+      items.forEach((it: any) => {
+        const fSku = it.sku || 'N/A';
+        const fProd = (it.nombre || 'Producto').replace(/;/g, ' ');
+        const fCant = it.cantidad || 1;
+        const fPrecioUnit = it.precio || 0;
+        const fSub = (it.cantidad || 1) * (it.precio || 0);
+        const fIva = it.iva_monto || f.iva_monto || 0;
+        const fTot = fSub + fIva;
+
+        csvContent += `${fNum};${fOrden};${fFecha};${fTipoDoc};${fNit};${fCliente};${fMail};${fTel};${fDir};${fCiu};${fResp};${fSku};${fProd};${fCant};${fPrecioUnit};${fMetodo};${fCanal};${fSub};${fIva};${fTot};${fEst}\n`;
+      });
     });
 
     const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -187,7 +190,7 @@ export default function FacturasPage() {
     const link = document.createElement('a');
     link.href = url;
     const nombreMes = mesesDelAnio[mesFiltro].nombre;
-    link.setAttribute('download', `Consolidado_Documentos_Venta_DIAN_${nombreMes}_${anioFiltro}.csv`);
+    link.setAttribute('download', `Consolidado_Documentos_Venta_${nombreMes}_${anioFiltro}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -268,11 +271,11 @@ export default function FacturasPage() {
         </div>
       </div>
 
-      {/* TARJETAS MÉTRICAS */}
+      {/* TARJETAS MÉTRICAS (MUESTRAN MONEDA GLOBAL CONFIGURADA) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between h-36">
           <span className="text-[11px] font-satoshi-black text-gray-700 uppercase font-bold">TOTAL FACTURADO ({mesesDelAnio[mesFiltro].nombre.toUpperCase()})</span>
-          <span className="text-3xl font-black text-gray-900 font-satoshi-black">{formatoCOP(totalFacturadoMes)}</span>
+          <span className="text-3xl font-black text-gray-900 font-satoshi-black">{formatearMonedaGlobal(totalFacturadoMes, monedaLocal)}</span>
           <p className="text-xs text-gray-500 font-satoshi-regular">Acumulado fiscal importado</p>
         </div>
 
@@ -389,7 +392,7 @@ export default function FacturasPage() {
                       Cant: {item?.cantidad || 1} u {Array.isArray(f.items) && f.items.length > 1 ? `(+${f.items.length - 1} más)` : ''}
                     </div>
                   </td>
-                  <td className="p-4 text-right font-satoshi-black text-gray-900 font-bold">{formatoCOP(f.total)}</td>
+                  <td className="p-4 text-right font-satoshi-black text-gray-900 font-bold">{formatearMonedaGlobal(f.total, monedaLocal)}</td>
                   
                   {/* ESTADO VISUAL DE LA FACTURA */}
                   <td className="p-4 text-center">
@@ -518,9 +521,9 @@ export default function FacturasPage() {
                 <div key={i} className="flex justify-between items-start text-[11px] mb-1">
                   <div>
                     <div className="font-bold text-gray-900">{it.nombre}</div>
-                    <div className="text-[9px] text-gray-500">Cant: {it.cantidad} x {formatoCOP(it.precio)} (IVA {it.tarifaIva || 19}%)</div>
+                    <div className="text-[9px] text-gray-500">Cant: {it.cantidad} x {formatearMonedaGlobal(it.precio, monedaLocal)} (IVA {it.tarifaIva || 19}%)</div>
                   </div>
-                  <span className="font-bold text-gray-900">{formatoCOP(it.cantidad * it.precio)}</span>
+                  <span className="font-bold text-gray-900">{formatearMonedaGlobal(it.cantidad * it.precio, monedaLocal)}</span>
                 </div>
               ))}
             </div>
@@ -528,15 +531,15 @@ export default function FacturasPage() {
             <div className="space-y-1 pt-1 text-right">
               <div className="flex justify-between text-[11px] text-gray-600">
                 <span>Subtotal Gravable:</span>
-                <span className="font-bold text-gray-900">{formatoCOP(selectedFactura.subtotal)}</span>
+                <span className="font-bold text-gray-900">{formatearMonedaGlobal(selectedFactura.subtotal, monedaLocal)}</span>
               </div>
               <div className="flex justify-between text-[11px] text-gray-600">
                 <span>IVA Discriminado:</span>
-                <span className="font-bold text-gray-900">{formatoCOP(selectedFactura.iva_monto)}</span>
+                <span className="font-bold text-gray-900">{formatearMonedaGlobal(selectedFactura.iva_monto, monedaLocal)}</span>
               </div>
               <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-900 text-gray-900">
                 <span>TOTAL:</span>
-                <span>{formatoCOP(selectedFactura.total)}</span>
+                <span>{formatearMonedaGlobal(selectedFactura.total, monedaLocal)}</span>
               </div>
             </div>
 
@@ -545,7 +548,7 @@ export default function FacturasPage() {
               className="w-full bg-[#222222] hover:bg-[#333333] text-white font-satoshi-black py-3 rounded-xl uppercase shadow-sm flex items-center justify-center gap-2 font-bold"
             >
               <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
               <span>Imprimir Comprobante PDF</span>
             </button>
