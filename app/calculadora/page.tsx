@@ -3,11 +3,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { formatearMonedaGlobal } from '@/lib/moneda';
 
 export default function CalculadoraPage() {
   const [userAuth, setUserAuth] = useState<any>(null);
   const [productos, setProductos] = useState<any[]>([]);
   const [sucursales, setSucursales] = useState<any[]>([]);
+
+  // Moneda Oficial leída desde el perfil en la sesión del usuario
+  const monedaLocal = userAuth?.moneda_oficial || 'COP';
+  const formatoMoneda = (v: number) => formatearMonedaGlobal(v, monedaLocal);
 
   // ==========================================
   // ESTADOS DEL SIMULADOR UNITARIO
@@ -39,9 +44,6 @@ export default function CalculadoraPage() {
   const [auditSearch, setAuditSearch] = useState('');
   const [auditFiltroSalud, setAuditFiltroSalud] = useState<'TODOS' | 'SALUDABLE' | 'ALERTA' | 'PERDIDA'>('TODOS');
   const [updatingSku, setUpdatingSku] = useState<string | null>(null);
-
-  const formatoCOP = (v: number) =>
-    new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('atom_user_session');
@@ -132,14 +134,14 @@ export default function CalculadoraPage() {
     const utilidadNetaUnitOpt1 = precioOpt1Unit * mTarget;
 
     // --- OPCIÓN 2: MANTENER PRECIO BASE Y DISMINUIR % DE GANANCIA (E-Com) ---
-    const denOpt2 = 1 - mTarget - platFeePct; // Precio base calculado sin la comisión
+    const denOpt2 = 1 - mTarget - platFeePct;
     const precioOpt2Unit = denOpt2 > 0 ? (costoRealUnit / denOpt2) : (costoRealUnit * 2);
     const bonifVendedorMontoOpt2 = precioOpt2Unit * sellerBonusPct;
     const comisionPlatMontoOpt2 = precioOpt2Unit * platFeePct;
     const utilidadNetaUnitOpt2 = precioOpt2Unit - comisionPlatMontoOpt2 - bonifVendedorMontoOpt2 - costoRealUnit;
     const margenRealPctOpt2 = precioOpt2Unit > 0 ? (utilidadNetaUnitOpt2 / precioOpt2Unit) * 100 : 0;
 
-    // IVA si aplica (Droko o E-Com)
+    // IVA si aplica
     const aplicaIvaActual = simCanal === 'DROKO' ? simAplicaIvaDroko : (simCanal === 'ECOM' ? simAplicaIvaEcom : false);
     const tarifaIvaActual = simCanal === 'DROKO' ? simTarifaIvaDroko : (simCanal === 'ECOM' ? simTarifaIvaEcom : 0);
     const ivaPct = aplicaIvaActual ? ((Number(tarifaIvaActual) || 0) / 100) : 0;
@@ -322,7 +324,7 @@ export default function CalculadoraPage() {
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2.5 h-2.5 rounded-full bg-[#FFD800] border border-gray-800 animate-pulse"></span>
             <span className="text-[11px] font-satoshi-black text-gray-900 uppercase tracking-wider font-bold">
-              Inteligencia Financiera & Rentabilidad
+              Inteligencia Financiera & Rentabilidad ({monedaLocal})
             </span>
           </div>
           <h1 className="text-3xl font-black text-gray-900 tracking-tight font-satoshi-black">
@@ -392,7 +394,7 @@ export default function CalculadoraPage() {
             <div className="space-y-4 text-xs font-satoshi-regular">
               <div className={`grid gap-3 ${simCanal === 'ECOM' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <div>
-                  <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Costo Producto (COP)</label>
+                  <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Costo Producto ({monedaLocal})</label>
                   <input
                     type="number"
                     min="0"
@@ -405,7 +407,7 @@ export default function CalculadoraPage() {
                 {/* PICKING Y EMPAQUE SOLO EN E-COMMERCE */}
                 {simCanal === 'ECOM' && (
                   <div>
-                    <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Picking / Empaque (COP)</label>
+                    <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Picking / Empaque ({monedaLocal})</label>
                     <input
                       type="number"
                       min="0"
@@ -419,7 +421,7 @@ export default function CalculadoraPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Otros Gastos (COP)</label>
+                  <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Otros Gastos ({monedaLocal})</label>
                   <input
                     type="number"
                     min="0"
@@ -635,7 +637,7 @@ export default function CalculadoraPage() {
                       OPCIÓN 1: SUBIR PRECIO DE VENTA
                     </span>
                     <div className="text-3xl font-black text-gray-900 font-satoshi-black">
-                      {formatoCOP(calculoSimulador.precioSugeridoUnit)}
+                      {formatoMoneda(calculoSimulador.precioSugeridoUnit)}
                     </div>
                     <p className="text-[9px] text-emerald-700 font-satoshi-black">
                       Conserva intacto el {simMargenDeseado}% de margen neto
@@ -647,7 +649,7 @@ export default function CalculadoraPage() {
                       Ganancia Total ({calculoSimulador.cantidadProyectada} unds)
                     </span>
                     <span className="text-xl font-black text-emerald-900 font-mono">
-                      {formatoCOP(calculoSimulador.totalUtilidadNetaOpt1)}
+                      {formatoMoneda(calculoSimulador.totalUtilidadNetaOpt1)}
                     </span>
                   </div>
                 </div>
@@ -659,7 +661,7 @@ export default function CalculadoraPage() {
                       OPCIÓN 2: MANTENER PRECIO BASE
                     </span>
                     <div className="text-3xl font-black text-gray-600 font-satoshi-black">
-                      {formatoCOP(calculoSimulador.precioBaseOpt2)}
+                      {formatoMoneda(calculoSimulador.precioBaseOpt2)}
                     </div>
                     <p className="text-[9px] text-amber-600 font-satoshi-black">
                       El margen neto cae al {calculoSimulador.margenRealPctOpt2.toFixed(1)}% por la comisión ({simBonifVendedor}%)
@@ -671,7 +673,7 @@ export default function CalculadoraPage() {
                       Ganancia Total ({calculoSimulador.cantidadProyectada} unds)
                     </span>
                     <span className="text-xl font-black text-gray-800 font-mono">
-                      {formatoCOP(calculoSimulador.totalUtilidadNetaOpt2)}
+                      {formatoMoneda(calculoSimulador.totalUtilidadNetaOpt2)}
                     </span>
                   </div>
                 </div>
@@ -685,7 +687,7 @@ export default function CalculadoraPage() {
                     PRECIO SUGERIDO BLINDADO
                   </span>
                   <div className="text-4xl font-black text-gray-900 font-satoshi-black">
-                    {formatoCOP(calculoSimulador.precioSugeridoUnit)}
+                    {formatoMoneda(calculoSimulador.precioSugeridoUnit)}
                   </div>
                   <p className="text-[10px] text-emerald-700 font-satoshi-black">
                     Garantiza {simMargenDeseado}% de utilidad neta libre por unidad
@@ -702,52 +704,52 @@ export default function CalculadoraPage() {
                 </span>
                 <div className="flex justify-between text-gray-600">
                   <span>Inversión Producto (COGS):</span>
-                  <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalCostoProducto)}</span>
+                  <span className="font-mono text-gray-900 font-bold">{formatoMoneda(calculoSimulador.totalCostoProducto)}</span>
                 </div>
 
                 {simCanal === 'ECOM' && (
                   <div className="flex justify-between text-gray-600">
                     <span>Picking / Empaque:</span>
-                    <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalPickingEmpaque)}</span>
+                    <span className="font-mono text-gray-900 font-bold">{formatoMoneda(calculoSimulador.totalPickingEmpaque)}</span>
                   </div>
                 )}
 
                 <div className="flex justify-between text-gray-600">
                   <span>Otros Gastos Operativos:</span>
-                  <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalOtrosGastos)}</span>
+                  <span className="font-mono text-gray-900 font-bold">{formatoMoneda(calculoSimulador.totalOtrosGastos)}</span>
                 </div>
 
                 {simCanal === 'ECOM' && (
                   <div className="flex justify-between text-gray-600">
                     <span>Provisión Fuga / Devoluciones:</span>
-                    <span className="font-mono text-red-600 font-bold">{formatoCOP(calculoSimulador.totalProvisionFugaProyectada)}</span>
+                    <span className="font-mono text-red-600 font-bold">{formatoMoneda(calculoSimulador.totalProvisionFugaProyectada)}</span>
                   </div>
                 )}
 
                 {simCanal === 'ECOM' && simBonifVendedor > 0 && (
                   <div className="flex justify-between text-gray-600">
                     <span>Comisión / Bonificación Vendedor ({simBonifVendedor}%):</span>
-                    <span className="font-mono text-amber-800 font-bold">{formatoCOP(calculoSimulador.totalBonifVendedorOpt1)}</span>
+                    <span className="font-mono text-amber-800 font-bold">{formatoMoneda(calculoSimulador.totalBonifVendedorOpt1)}</span>
                   </div>
                 )}
 
                 {simCanal === 'DROKO' && (
                   <div className="flex justify-between text-gray-600">
                     <span>Comisión Plataforma Droko ({simPlatFee}%):</span>
-                    <span className="font-mono text-amber-800 font-bold">{formatoCOP(calculoSimulador.totalComisionPlataforma)}</span>
+                    <span className="font-mono text-amber-800 font-bold">{formatoMoneda(calculoSimulador.totalComisionPlataforma)}</span>
                   </div>
                 )}
 
                 {((simCanal === 'DROKO' && simAplicaIvaDroko) || (simCanal === 'ECOM' && simAplicaIvaEcom)) && (
                   <div className="flex justify-between text-gray-600">
                     <span>Monto IVA ({simCanal === 'DROKO' ? simTarifaIvaDroko : simTarifaIvaEcom}%):</span>
-                    <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalIvaMontoOpt1)}</span>
+                    <span className="font-mono text-gray-900 font-bold">{formatoMoneda(calculoSimulador.totalIvaMontoOpt1)}</span>
                   </div>
                 )}
 
                 <div className="flex justify-between text-gray-900 font-satoshi-black pt-1 border-t border-gray-200 font-bold">
                   <span>Total Deducibles (Costo Real):</span>
-                  <span className="font-mono text-red-600">{formatoCOP(calculoSimulador.totalDeduciblesProyectadoOpt1)}</span>
+                  <span className="font-mono text-red-600">{formatoMoneda(calculoSimulador.totalDeduciblesProyectadoOpt1)}</span>
                 </div>
               </div>
             ) : (
@@ -755,12 +757,12 @@ export default function CalculadoraPage() {
               <div className="grid grid-cols-2 gap-3 text-xs font-satoshi-regular">
                 <div className="bg-white p-3 rounded-xl border border-gray-200 text-center shadow-sm">
                   <span className="text-[9px] text-gray-500 block uppercase font-satoshi-black">Costo Real Total</span>
-                  <span className="font-mono font-bold text-gray-900">{formatoCOP(calculoSimulador.costoRealUnit)}</span>
+                  <span className="font-mono font-bold text-gray-900">{formatoMoneda(calculoSimulador.costoRealUnit)}</span>
                 </div>
 
                 <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-center shadow-sm">
                   <span className="text-[9px] text-emerald-800 block uppercase font-satoshi-black">Utilidad Neta / Und</span>
-                  <span className="font-mono font-bold text-emerald-900">{formatoCOP(calculoSimulador.utilidadNetaUnitOpt1)}</span>
+                  <span className="font-mono font-bold text-emerald-900">{formatoMoneda(calculoSimulador.utilidadNetaUnitOpt1)}</span>
                 </div>
               </div>
             )}
@@ -772,7 +774,7 @@ export default function CalculadoraPage() {
               className="w-full bg-[#FFD800] hover:bg-[#FDCB13] text-[#222222] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider transition shadow-sm flex items-center justify-center gap-2 font-bold"
             >
               <svg className="w-4 h-4 text-[#222222]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
               <span>Imprimir resultado</span>
             </button>
@@ -916,7 +918,7 @@ export default function CalculadoraPage() {
                       </td>
 
                       <td className="p-3 text-right font-satoshi-black font-bold text-gray-900">
-                        {formatoCOP(p.precioActual)}
+                        {formatoMoneda(p.precioActual)}
                       </td>
 
                       <td className="p-3 text-right font-mono font-bold">
@@ -928,7 +930,7 @@ export default function CalculadoraPage() {
                       </td>
 
                       <td className="p-3 text-right font-mono font-bold text-gray-900">
-                        {formatoCOP(p.precioSugerido)}
+                        {formatoMoneda(p.precioSugerido)}
                       </td>
 
                       <td className="p-3 text-center">
