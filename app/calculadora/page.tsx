@@ -3,87 +3,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { formatearMonedaGlobal } from '@/lib/moneda';
-
-// ==========================================
-// DICCIONARIO FISCAL AUTOMÁTICO MULTIPAÍS
-// ==========================================
-const IVAS_POR_MONEDA: Record<string, { label: string; value: number }[]> = {
-  ARS: [
-    { label: 'General (21%)', value: 21 },
-    { label: 'Incrementada (27%)', value: 27 },
-    { label: 'Reducida (10.5%)', value: 10.5 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  BRL: [
-    { label: 'ICMS Padrão (18%)', value: 18 },
-    { label: 'ICMS (17%)', value: 17 },
-    { label: 'ICMS (12%)', value: 12 },
-    { label: 'ICMS (7%)', value: 7 },
-    { label: 'Isento (0%)', value: 0 }
-  ],
-  CLP: [
-    { label: 'General (19%)', value: 19 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  COP: [
-    { label: 'General (19%)', value: 19 },
-    { label: 'INC (8%)', value: 8 },
-    { label: 'Reducida (5%)', value: 5 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  USD: [ // Ecuador / Panamá / El Salvador
-    { label: 'Ecuador - Gen (15%)', value: 15 },
-    { label: 'Ecuador - Const (13%)', value: 13 },
-    { label: 'Ecuador - Tur (8%)', value: 8 },
-    { label: 'Panamá - Gen (7%)', value: 7 },
-    { label: 'Panamá - Alcohol (10%)', value: 10 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  GTQ: [
-    { label: 'Régimen General (12%)', value: 12 },
-    { label: 'Pequeño Contribuyente (5%)', value: 5 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  MXN: [
-    { label: 'General (16%)', value: 16 },
-    { label: 'Fronteriza (8%)', value: 8 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  PAB: [
-    { label: 'General ITBMS (7%)', value: 7 },
-    { label: 'Incrementada (10%)', value: 10 },
-    { label: 'Especial (15%)', value: 15 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  PYG: [
-    { label: 'General (10%)', value: 10 },
-    { label: 'Reducida (5%)', value: 5 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  PEN: [
-    { label: 'General IGV (18%)', value: 18 },
-    { label: 'Especial MYPEs (10%)', value: 10 },
-    { label: 'Exento (0%)', value: 0 }
-  ],
-  VES: [
-    { label: 'General (16%)', value: 16 },
-    { label: 'Reducida (8%)', value: 8 },
-    { label: 'Exento (0%)', value: 0 }
-  ]
-};
+import { formatearMonedaGlobal, obtenerTarifasImpuesto } from '@/lib/moneda';
 
 export default function CalculadoraPage() {
   const [userAuth, setUserAuth] = useState<any>(null);
   const [productos, setProductos] = useState<any[]>([]);
   const [sucursales, setSucursales] = useState<any[]>([]);
 
-  // Moneda Oficial leída desde el perfil en la sesión del usuario
+  // Moneda Oficial leída desde la sesión del usuario
   const monedaLocal = userAuth?.moneda_oficial || 'COP';
   const formatoMoneda = (v: number) => formatearMonedaGlobal(v, monedaLocal);
   
-  // Opciones de IVA dinámicas según la divisa actual (Falla segura a COP)
-  const opcionesIvaActuales = IVAS_POR_MONEDA[monedaLocal] || IVAS_POR_MONEDA['COP'];
+  // Opciones de IVA conectadas al módulo centralizado lib/moneda.ts
+  const opcionesIvaActuales = useMemo(() => obtenerTarifasImpuesto(monedaLocal), [monedaLocal]);
 
   // ==========================================
   // ESTADOS DEL SIMULADOR UNITARIO
@@ -137,13 +69,13 @@ export default function CalculadoraPage() {
     };
   }, [userAuth]);
 
-  // Autoseleccionar la primera tarifa de IVA general cuando cambia la divisa oficial
+  // Autoseleccionar la primera tarifa de IVA oficial cuando cambia la divisa del usuario
   useEffect(() => {
     if (opcionesIvaActuales && opcionesIvaActuales.length > 0) {
-      setSimTarifaIvaEcom(opcionesIvaActuales[0].value);
-      setSimTarifaIvaDroko(opcionesIvaActuales[0].value);
+      setSimTarifaIvaEcom(opcionesIvaActuales[0].valor);
+      setSimTarifaIvaDroko(opcionesIvaActuales[0].valor);
     }
-  }, [monedaLocal]);
+  }, [opcionesIvaActuales]);
 
   // Autoconfigurar parámetros según el canal seleccionado
   useEffect(() => {
@@ -565,7 +497,7 @@ export default function CalculadoraPage() {
                           className="w-full bg-[#222222] border border-gray-700 rounded-lg p-1 text-[11px] font-mono text-[#FFD800] focus:outline-none mt-1"
                         >
                           {opcionesIvaActuales.map((opcion) => (
-                            <option key={opcion.label} value={opcion.value}>{opcion.label}</option>
+                            <option key={opcion.label} value={opcion.valor}>{opcion.label}</option>
                           ))}
                         </select>
                       )}
@@ -617,7 +549,7 @@ export default function CalculadoraPage() {
                           className="w-full bg-[#222222] border border-gray-700 rounded-lg p-1 text-[11px] font-mono text-[#FFD800] focus:outline-none mt-1"
                         >
                           {opcionesIvaActuales.map((opcion) => (
-                            <option key={opcion.label} value={opcion.value}>{opcion.label}</option>
+                            <option key={opcion.label} value={opcion.valor}>{opcion.label}</option>
                           ))}
                         </select>
                       )}
