@@ -145,7 +145,7 @@ export default function GlosarioPage() {
             </span>
           </div>
           <h1 className="text-3xl font-black text-gray-900 tracking-tight font-satoshi-black">
-            MANUAL DE USUARIO Y GLOSARIO
+            MANUAL DE USUARIO
           </h1>
           <p className="text-xs text-gray-500 mt-1 font-satoshi-regular max-w-xl">
             Aprende a usar la plataforma, entiende los conceptos básicos y sácale el máximo provecho a tu sistema.
