@@ -66,8 +66,38 @@ export default function GlosarioPage() {
       )
     },
     {
+      id: 'calculadora-blindaje',
+      title: '3. Simulador y Calculadora de Blindaje de Precios',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      ),
+      content: (
+        <div className="space-y-4 text-sm text-gray-600 font-satoshi-regular leading-relaxed">
+          <p>La <em>Calculadora de Precios</em> es una herramienta estratégica que te permite saber exactamente a cuánto debes vender un producto para mantener tus ganancias libres de "fugas de capital" (mermas, devoluciones, comisiones de pasarela).</p>
+          
+          <h4 className="font-satoshi-black text-gray-900 uppercase">La Matemática del Blindaje por Canal:</h4>
+          <ul className="list-disc pl-5 space-y-2">
+            <li><strong>POS y Mayor:</strong> Son canales estables. Solo consideran tus costos directos y el margen neto que deseas ganar libres de impuestos.</li>
+            <li><strong>Droko:</strong> Considera además un porcentaje de "Comisión de Plataforma" que se te descontará del precio de venta final. Te permite proyectar ganancias por volumen.</li>
+            <li><strong>E-Commerce (El más riesgoso):</strong> En E-Com aplicamos los <em>Factores de Fuga Operativa</em>. Esto incluye el porcentaje histórico de productos que se pierden (Merma) y los fletes que debes pagar por devoluciones (Logística Inversa). El precio final debe <strong>absorber</strong> estos costos para que no salgan de tu bolsillo.</li>
+          </ul>
+
+          <div className="bg-gray-100 p-4 rounded-xl border border-gray-200 mt-2">
+            <h5 className="font-satoshi-black text-gray-900 mb-2">Simulador E-Commerce: Opción 1 vs Opción 2</h5>
+            <p className="mb-2">Al asignar una bonificación para tus vendedores o pautas de publicidad en E-Commerce, el sistema te muestra 2 rutas estratégicas:</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li><strong>Opción 1 (Subir Precio):</strong> Aumenta matemáticamente el precio de venta al público para garantizar que esa bonificación la pague el cliente, manteniendo tu % de utilidad intacto.</li>
+              <li><strong>Opción 2 (Mantener Precio Base):</strong> El precio al público no sube, pero el sistema te alerta cuánto porcentaje de tu utilidad neta se pierde al absorber tú esa bonificación/comisión.</li>
+            </ul>
+          </div>
+        </div>
+      )
+    },
+    {
       id: 'exportacion-droko',
-      title: '3. Exportación de Inventarios (General y Droko USD)',
+      title: '4. Exportación de Inventarios (General y Droko)',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -81,7 +111,7 @@ export default function GlosarioPage() {
             <li><strong className="text-gray-900 font-satoshi-black">Exportar Droko (Packing List):</strong> Genera un archivo CSV filtrado de forma inteligente:
               <ol className="list-decimal pl-5 mt-1 space-y-1">
                 <li>Exporta <strong>únicamente</strong> los productos que tienen stock asignado a la Bodega Droko.</li>
-                <li>Pide la **TRM** al momento de descargar para convertir automáticamente los costos y el *Precio Droko* de Pesos Colombianos (COP) a Dólares (USD).</li>
+                <li>Pide la **TRM** al momento de descargar para convertir automáticamente los costos y el *Precio Droko* de tu moneda local a Dólares (USD).</li>
               </ol>
             </li>
           </ul>
@@ -90,7 +120,7 @@ export default function GlosarioPage() {
     },
     {
       id: 'traslados',
-      title: '4. Traslados de Mercancía',
+      title: '5. Traslados de Mercancía',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -108,7 +138,7 @@ export default function GlosarioPage() {
     },
     {
       id: 'ventas-pos-facturacion',
-      title: '5. Registro de Ventas (Caja POS) y Control Contable',
+      title: '6. Registro de Ventas (Caja POS) y Control Contable',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 00-4zm-8 2a2 2 0 100 4 2 2 0 00-4z" />
@@ -162,7 +192,7 @@ export default function GlosarioPage() {
           <input 
             type="text" 
             className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl pl-10 pr-4 py-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none transition-all font-satoshi-regular"
-            placeholder="Escribe un tema o concepto que desees buscar (ej: Droko, TRM, IVA, Traslados)..."
+            placeholder="Escribe un tema o concepto que desees buscar (ej: Droko, Calculadora, IVA, Traslados)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
