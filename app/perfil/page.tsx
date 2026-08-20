@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, writeBatch } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
-import { MONEDAS } from '@/lib/moneda';
+import { MONEDAS, MAPA_INDICATIVO_MONEDA } from '@/lib/moneda';
 import '@/app/globals.css';
 
 export default function PerfilPage() {
@@ -45,7 +45,7 @@ export default function PerfilPage() {
   const [nit, setNit] = useState('');
   const [regimenFiscal, setRegimenFiscal] = useState('RESPONSABLE_IVA');
   const [pais, setPais] = useState('Colombia');
-  const [monedaOficial, setMonedaOficial] = useState('COP'); // MONEDA OFICIAL
+  const [monedaOficial, setMonedaOficial] = useState('COP'); 
   const [ciudad, setCiudad] = useState('');
   const [telefonoCorp, setTelefonoCorp] = useState('');
   const [direccionFiscal, setDireccionFiscal] = useState('');
@@ -84,7 +84,7 @@ export default function PerfilPage() {
     try {
       let uNom = session.nombre || '';
       let uUser = session.user || '';
-      let uPrefijo = session.indicativo_pais || ''; 
+      let uPrefijo = session.indicativo_pais || '+57'; 
       let uTel = extraerNumeroLocal(session.telefono || '');
       let rSoc = session.empresa || '';
       let nDoc = '';
@@ -93,7 +93,10 @@ export default function PerfilPage() {
       let telC = '';
       let dirF = '';
       let eFact = '';
-      let monOf = session.moneda_oficial || 'COP';
+      
+      // MONEDA PREDETERMINADA SEGÚN EL PAÍS DE LA SESIÓN
+      const monedaInferidaPorPais = MAPA_INDICATIVO_MONEDA[uPrefijo] || 'COP';
+      let monOf = session.moneda_oficial || monedaInferidaPorPais;
 
       if (session.id_usuario) {
         const uDoc = await getDoc(doc(db, 'usuarios', session.id_usuario));
@@ -119,7 +122,6 @@ export default function PerfilPage() {
           eFact = fd.email_facturacion || '';
           monOf = fd.moneda_oficial || monOf;
         } else {
-          // Fallback
           const cDoc = await getDoc(doc(db, 'cuentas', session.id_cuenta));
           if (cDoc.exists()) {
             const cd = cDoc.data();
@@ -185,9 +187,7 @@ export default function PerfilPage() {
     return cambioPerfil || cambioLegales;
   };
 
-  // ==========================================
   // 🛡️ GUARDADO CON BATCH Y FIREBASE AUTH
-  // ==========================================
   const handleGuardarCambios = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -195,7 +195,6 @@ export default function PerfilPage() {
     if (!telefono.trim()) return alert("Por favor ingresa tu número de teléfono.");
     if (!hayCambios()) return;
     
-    // VALIDACIÓN DE CONTRASEÑAS PARA FIREBASE AUTH
     if (passNueva.trim()) {
       if (passNueva.trim().length < 6) return alert('La nueva contraseña debe tener al menos 6 caracteres.');
       if (passNueva !== passConfirm) return alert('Las nuevas contraseñas no coinciden.');
@@ -207,7 +206,6 @@ export default function PerfilPage() {
       const batch = writeBatch(db);
       const fechaActualizacion = new Date().toISOString();
 
-      // 1. ACTUALIZAR CONTRASEÑA EN FIREBASE AUTH
       if (passNueva.trim()) {
         if (!auth.currentUser) {
           setIsSaving(false);
@@ -216,7 +214,6 @@ export default function PerfilPage() {
         await updatePassword(auth.currentUser, passNueva.trim());
       }
 
-      // 2. Actualizar usuario en Firestore
       if (userAuth?.id_usuario) {
         const userUpdate: any = {
           nombre: nombre.trim(),
@@ -229,7 +226,6 @@ export default function PerfilPage() {
         batch.set(userRef, userUpdate, { merge: true });
       }
 
-      // 3. Guardar datos legales y actualizar cuenta
       if (userAuth?.id_cuenta) {
         const facturaElectronicaData = {
           id_cuenta: userAuth.id_cuenta,
@@ -272,7 +268,7 @@ export default function PerfilPage() {
       localStorage.setItem('atom_user_session', JSON.stringify(sessionObj));
       setUserAuth(sessionObj);
 
-      alert('¡Configuración y credenciales guardadas correctamente!');
+      alert('¡Configuración guardada correctamente!\n\nNota: Si modificaste tu Moneda Oficial, los simuladores y reportes de la plataforma se actualizarán automáticamente.');
       setPassActual('');
       setPassNueva('');
       setPassConfirm('');
@@ -361,6 +357,25 @@ export default function PerfilPage() {
           {activeTab === 'PERFIL' && (
             <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in">
               
+              {/* BANNER INFORMATIVO SOBRE CONFIGURACIÓN DE MONEDA */}
+              <div className="bg-[#FFD800]/10 border border-[#FFD800] rounded-xl p-3.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <svg className="w-5 h-5 text-[#222222] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-gray-800 font-satoshi-regular">
+                    La <strong className="font-satoshi-black">Moneda Oficial</strong> se sugiere automáticamente según tu país. Si deseas personalizarla o cambiarla, puedes hacerlo en la pestaña{' '}
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('LEGALES')}
+                      className="font-satoshi-black font-bold text-gray-900 underline hover:text-[#222222] transition"
+                    >
+                      Datos Legales y Fiscales
+                    </button>.
+                  </p>
+                </div>
+              </div>
+
               <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4 shadow-sm">
                 <div className="w-12 h-12 rounded-xl bg-[#2C2C2C] flex items-center justify-center text-[#FFD800] font-satoshi-black text-xl shadow-inner shrink-0">
                   {nombre ? nombre.charAt(0).toUpperCase() : 'U'}
@@ -417,7 +432,11 @@ export default function PerfilPage() {
                         !prefijoPais ? 'text-gray-400' : 'text-gray-900'
                       }`}
                       value={prefijoPais}
-                      onChange={(e) => setPrefijoPais(e.target.value)}
+                      onChange={(e) => {
+                        const nuevoPrefijo = e.target.value;
+                        setPrefijoPais(nuevoPrefijo);
+                        setMonedaOficial(MAPA_INDICATIVO_MONEDA[nuevoPrefijo] || 'COP');
+                      }}
                       required
                     >
                       <option value="" disabled className="text-gray-500 bg-white">Sel...</option>
@@ -556,7 +575,7 @@ export default function PerfilPage() {
                       ))}
                     </select>
                     <p className="text-[9px] text-gray-500 mt-1 italic">
-                      * Moneda principal para reportes, catálogo y simuladores.
+                      * Asignada automáticamente según el indicativo de tu país ({prefijoPais}). Puedes cambiarla en cualquier momento.
                     </p>
                   </div>
                 </div>
@@ -658,7 +677,7 @@ export default function PerfilPage() {
               <button
                 type="submit"
                 disabled={!hayCambios() || isSaving}
-                className="w-full md:w-auto ml-auto bg-[#FFD800] hover:bg-[#FDCB13] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-[#222222] font-satoshi-black px-6 py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center justify-center gap-1.5"
+                className="w-full md:w-auto ml-auto bg-[#FFD800] hover:bg-[#FDCB13] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-[#222222] font-satoshi-black px-6 py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center justify-center gap-1.5 font-bold"
               >
                 {isSaving ? (
                   <span>Guardando en BD...</span>
