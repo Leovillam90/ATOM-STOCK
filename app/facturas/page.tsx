@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { collection, query, where, onSnapshot, doc, getDoc, writeBatch } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 export default function FacturasPage() {
@@ -10,7 +10,7 @@ export default function FacturasPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODAS' | 'EMITIDA' | 'PENDIENTE' | 'ANULADA'>('TODAS');
 
-  // CONTROL DE ORDENAMIENTO Y PAGINACIÓN (50 REGISTROS POR PÁGINA)
+  // CONTROL DE ORDENAMIENTO Y PAGINACIÓN
   const [ordenFecha, setOrdenFecha] = useState<'NUEVAS_PRIMERO' | 'ANTIGUAS_PRIMERO'>('NUEVAS_PRIMERO');
   const [paginaActual, setPaginaActual] = useState<number>(1);
   const ventasPorPagina = 50;
@@ -23,13 +23,6 @@ export default function FacturasPage() {
   // Modales
   const [showModalDetail, setShowModalDetail] = useState(false);
   const [selectedFactura, setSelectedFactura] = useState<any>(null);
-
-  // Modal Carga Masiva E-Commerce (Dropi, Véndelo, Master)
-  const [showModalEcommerce, setShowModalEcommerce] = useState(false);
-  const [archivoCSV, setArchivoCSV] = useState<File | null>(null);
-  const [canalPlataforma, setCanalPlataforma] = useState('DROPI');
-  const [loadingEcom, setLoadingEcom] = useState(false);
-  const fileInputEcomRef = useRef<HTMLInputElement>(null);
 
   const formatoCOP = (v: number) => 
     new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
@@ -47,13 +40,15 @@ export default function FacturasPage() {
   useEffect(() => {
     const savedUser = localStorage.getItem('atom_user_session');
     if (savedUser) {
-      setUserAuth(JSON.parse(savedUser));
+      try {
+        setUserAuth(JSON.parse(savedUser));
+      } catch (e) {
+        localStorage.removeItem('atom_user_session');
+      }
     }
   }, []);
 
-  // ==========================================
-  // ESCUCHAR FIRESTORE EN TIEMPO REAL (⚠️ Deuda Técnica de Escalabilidad)
-  // ==========================================
+  // ESCUCHAR FIRESTORE EN TIEMPO REAL
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
@@ -67,7 +62,6 @@ export default function FacturasPage() {
         where('vendedor_nombre', '==', userAuth.nombre)
       );
     } else {
-      // ⚠️ ALERTA: Traer todas las ventas de la historia para luego filtrar localmente agotará la cuota de DB.
       q = query(collection(db, 'ventas'), where('id_cuenta', '==', userAuth.id_cuenta));
     }
 
@@ -87,7 +81,7 @@ export default function FacturasPage() {
   }, [searchQuery, filtroEstado, mesFiltro, anioFiltro, ordenFecha]);
 
   // ==========================================
-  // 🧠 RENDIMIENTO: LÓGICA MEMOIZADA (Filtros, Orden y Paginación)
+  // 🧠 RENDIMIENTO: LÓGICA MEMOIZADA
   // ==========================================
   const {
     facturasPaginadas,
@@ -96,9 +90,8 @@ export default function FacturasPage() {
     totalFacturadoMes,
     totalEmitidasMes,
     totalAnuladasMes,
-    facturasParaExportar // Se usa para el CSV
+    facturasParaExportar
   } = useMemo(() => {
-    // 1. Filtrado por Mes y Año
     const porPeriodo = facturas.filter(f => {
       const fechaStr = f.fecha_cobro || f.fecha;
       if (!fechaStr) return false;
@@ -106,7 +99,6 @@ export default function FacturasPage() {
       return fechaObj.getMonth() === mesFiltro && fechaObj.getFullYear() === anioFiltro;
     });
 
-    // 2. Filtrado por Texto y Estado
     const q = searchQuery.toLowerCase().trim();
     const porBusquedaYEstado = porPeriodo.filter(f => {
       const matchSearch = String(f.id_factura || '').toLowerCase().includes(q) ||
@@ -125,20 +117,17 @@ export default function FacturasPage() {
       return true;
     });
 
-    // 3. Ordenamiento
     const ordenadas = [...porBusquedaYEstado].sort((a, b) => {
       const fechaA = new Date(a.fecha_cobro || a.fecha || 0).getTime();
       const fechaB = new Date(b.fecha_cobro || b.fecha || 0).getTime();
       return ordenFecha === 'NUEVAS_PRIMERO' ? fechaB - fechaA : fechaA - fechaB;
     });
 
-    // 4. Paginación
     const totalCount = ordenadas.length;
     const paginas = Math.ceil(totalCount / ventasPorPagina) || 1;
     const idxInicio = (paginaActual - 1) * ventasPorPagina;
     const paginadas = ordenadas.slice(idxInicio, idxInicio + ventasPorPagina);
 
-    // 5. Métricas del periodo
     const validas = porPeriodo.filter(f => String(f.estado || '').toUpperCase() !== 'ANULADA');
     const anuladas = porPeriodo.filter(f => String(f.estado || '').toUpperCase() === 'ANULADA');
     const facturado = validas.reduce((acc, f) => acc + (Number(f.total) || 0), 0);
@@ -150,226 +139,14 @@ export default function FacturasPage() {
       totalFacturadoMes: facturado,
       totalEmitidasMes: validas.length,
       totalAnuladasMes: anuladas.length,
-      facturasParaExportar: porBusquedaYEstado // Guardamos esto filtrado para el botón exportar
+      facturasParaExportar: porBusquedaYEstado
     };
   }, [facturas, mesFiltro, anioFiltro, searchQuery, filtroEstado, ordenFecha, paginaActual]);
 
   const indiceInicial = (paginaActual - 1) * ventasPorPagina;
 
-  // DESCARGAR PLANTILLA COMPLETA DE FACTURACIÓN ELECTRÓNICA DIAN
-  const handleDescargarPlantilla = () => {
-    const bom = '\uFEFF';
-    let csv = 'ORDEN_ID;CANAL;TIPO_DOCUMENTO;CLIENTE_NIT;CLIENTE_NOMBRE;CLIENTE_CORREO;CLIENTE_TELEFONO;CLIENTE_DIRECCION;CLIENTE_CIUDAD;RESPONSABILIDAD_FISCAL;PRODUCTO;CANTIDAD;PRECIO_UNITARIO;IVA_PORCENTAJE;METODO_PAGO\n';
-    csv += 'DROP-1001;DROPI;13;1098765432;Pedro Gomez;pedro@correo.com;3101234567;Calle 10 # 15-20;Cali - Valle;R-99-PN;Teclado Mecanico RGB;1;85000;19;CONTRAENTREGA\n';
-    csv += 'VEN-5502;VENDELO;31;901234567;Tienda Ejemplo SAS;compras@ejemplo.com;3209876543;Av 6 Norte # 24-00;Medellin - Antioquia;O-48;Mouse Inalambrico;2;60000;19;PASARELA_PAYU\n';
-    csv += 'MST-8821;MASTER;13;1018234567;Carlos Ruiz;carlos@correo.com;3005554433;Carrera 5 # 12-30;Bogota D.C.;R-99-PN;Audifonos Pro;1;45000;0;EFECTIVO\n';
-
-    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'Plantilla_Facturacion_Electronica_DIAN_Masiva.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // ==========================================
-  // 🛡️ CARGA MASIVA CON WRITEBATCH (Seguridad y Consistencia)
-  // ==========================================
-  const handleProcesarCargaMasiva = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!archivoCSV) return alert('Selecciona un archivo CSV para procesar.');
-
-    setLoadingEcom(true);
-    const reader = new FileReader();
-
-    reader.onload = async (evt: ProgressEvent<FileReader>) => {
-      try {
-        const texto = (evt.target?.result || '') as string;
-        const lineas = texto.split('\n').map(l => l.trim()).filter(l => l !== '' && !l.toLowerCase().startsWith('sep='));
-
-        if (lineas.length <= 1) {
-          alert('El archivo CSV está vacío o no contiene filas de datos.');
-          setLoadingEcom(false);
-          return;
-        }
-
-        const separador = lineas[0].includes(';') ? ';' : ',';
-        const headers = lineas[0].split(separador).map(h => h.trim().toLowerCase().replace(/^"|"$/g, ''));
-
-        const columnasRequeridas = ['orden_id', 'cliente_nit', 'cliente_nombre', 'producto', 'precio_unitario'];
-        const columnasFaltantes = columnasRequeridas.filter(col => !headers.includes(col));
-
-        if (columnasFaltantes.length > 0) {
-          alert(`⛔ Formato Inválido:\nFaltan los encabezados obligatorios: [ ${columnasFaltantes.join(', ')} ]`);
-          setLoadingEcom(false);
-          return;
-        }
-
-        const idxOrdenId = headers.indexOf('orden_id');
-        const idxCanal = headers.indexOf('canal');
-        const idxTipoDoc = headers.indexOf('tipo_documento');
-        const idxNit = headers.indexOf('cliente_nit');
-        const idxCliente = headers.indexOf('cliente_nombre');
-        const idxCorreo = headers.indexOf('cliente_correo');
-        const idxTel = headers.indexOf('cliente_telefono');
-        const idxDir = headers.indexOf('cliente_direccion');
-        const idxCiu = headers.indexOf('cliente_ciudad');
-        const idxResp = headers.indexOf('responsabilidad_fiscal');
-        const idxProd = headers.indexOf('producto');
-        const idxCant = headers.indexOf('cantidad');
-        const idxPrecio = headers.indexOf('precio_unitario');
-        const idxIva = headers.indexOf('iva_porcentaje');
-        const idxMetodo = headers.indexOf('metodo_pago');
-
-        let creadosCount = 0;
-        let actualizadosCount = 0;
-
-        // BATCH PROCESSING: Para evitar data inconsistente si falla a la mitad
-        const batchArray: any[] = [writeBatch(db)];
-        let batchIndex = 0;
-        let opCount = 0;
-        const fechaActualISO = new Date().toISOString();
-
-        // DEUDA TÉCNICA: Leer el getDoc en un loop es costoso, pero necesario para no sobre-escribir lógica de negocio
-        for (let i = 1; i < lineas.length; i++) {
-          const columnas = lineas[i].split(separador).map(c => c.trim().replace(/^"|"$/g, ''));
-          
-          if (columnas.length >= 5 && columnas[idxCliente] && columnas[idxCliente] !== '') {
-            const ordenIdRaw = (idxOrdenId !== -1 && columnas[idxOrdenId]) ? columnas[idxOrdenId].trim() : '';
-            const ordenId = ordenIdRaw || `ORD-${Date.now().toString().slice(-4)}_${i}`;
-
-            const canal = (idxCanal !== -1 && columnas[idxCanal]) ? columnas[idxCanal] : canalPlataforma;
-            const tipoDoc = (idxTipoDoc !== -1 && columnas[idxTipoDoc]) ? columnas[idxTipoDoc] : '13';
-            const nit = (idxNit !== -1 && columnas[idxNit]) ? columnas[idxNit].trim() : '222222222222';
-            const cliente = columnas[idxCliente] || 'Consumidor Final';
-            const correo = (idxCorreo !== -1 && columnas[idxCorreo]) ? columnas[idxCorreo].toLowerCase().trim() : 'facturacion@ecom.com';
-            const telefono = (idxTel !== -1 && columnas[idxTel]) ? columnas[idxTel].trim() : 'N/A';
-            const direccion = (idxDir !== -1 && columnas[idxDir]) ? columnas[idxDir].trim() : 'Ciudad Principal';
-            const ciudad = (idxCiu !== -1 && columnas[idxCiu]) ? columnas[idxCiu].trim() : 'Cali';
-            const respFiscal = (idxResp !== -1 && columnas[idxResp]) ? columnas[idxResp] : 'R-99-PN';
-
-            const productoNombre = (idxProd !== -1 && columnas[idxProd]) ? columnas[idxProd] : 'Producto E-Commerce';
-            const cantidadNum = (idxCant !== -1 && columnas[idxCant]) ? (Number(columnas[idxCant]) || 1) : 1;
-            const precioUnitario = (idxPrecio !== -1 && columnas[idxPrecio]) ? (Number(columnas[idxPrecio]) || 0) : 0;
-            const ivaPct = (idxIva !== -1 && columnas[idxIva]) ? (Number(columnas[idxIva]) || 19) : 19;
-            const metodo = (idxMetodo !== -1 && columnas[idxMetodo]) ? columnas[idxMetodo] : 'CONTRAENTREGA';
-
-            const subtotal = cantidadNum * precioUnitario;
-            const ivaMonto = (subtotal * ivaPct) / 100;
-            const total = subtotal + ivaMonto;
-
-            const idFacturaDoc = `FACT_${ordenId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-            const docFacturaRef = doc(db, 'ventas', idFacturaDoc);
-            
-            // Verificamos si existe para los contadores de la alerta (lectura pesada, optimizable en el futuro)
-            const snapFactura = await getDoc(docFacturaRef);
-
-            const ventaDataObj = {
-              id_cuenta: userAuth?.id_cuenta || 'DEMO_123',
-              id_factura: idFacturaDoc,
-              cliente_nombre: cliente,
-              cliente_nit: nit,
-              cliente_tipo_doc: tipoDoc,
-              cliente_correo: correo,
-              cliente_telefono: telefono,
-              cliente_direccion: direccion,
-              cliente_ciudad: ciudad,
-              cliente_responsabilidad_fiscal: respFiscal,
-              vendedor_nombre: `E-Commerce (${canal})`,
-              vendedor_id: 'BOT_INTEGRACION',
-              nombre_bodega: `Despacho ${canal}`,
-              subtotal,
-              iva_monto: ivaMonto,
-              iva_porcentaje: ivaPct,
-              total,
-              metodo_pago: metodo,
-              orden_referencia: ordenId,
-              estado: 'EMITIDA',
-              origen: 'CARGA_MASIVA_ECOMMERCE',
-              fecha_cobro: fechaActualISO,
-              fecha: fechaActualISO,
-              items: [{
-                nombre: productoNombre,
-                cantidad: cantidadNum,
-                precio: precioUnitario,
-                tarifaIva: ivaPct
-              }]
-            };
-
-            if (snapFactura.exists()) {
-              actualizadosCount++;
-            } else {
-              creadosCount++;
-            }
-
-            // GUARDA EN BATCH (Venta)
-            batchArray[batchIndex].set(docFacturaRef, ventaDataObj, { merge: true });
-            opCount++;
-
-            // Mantenimiento del Batch (Límite 500 ops)
-            if (opCount >= 450) {
-              batchArray.push(writeBatch(db));
-              batchIndex++;
-              opCount = 0;
-            }
-
-            // REGISTRO DE CLIENTE
-            const idClienteRef = nit !== '222222222222' && nit !== 'CF_GENERAL'
-              ? `CLI_${nit}`
-              : `CLI_${Date.now().toString().slice(-6)}_${i}`;
-
-            const tipoCliFinal = (tipoDoc === '31' || nit.length === 9) ? 'JURIDICO' : 'NATURAL';
-
-            const cliObj = {
-              id_cuenta: userAuth?.id_cuenta || 'DEMO_123',
-              id_cliente: idClienteRef,
-              nombre: cliente,
-              nit: nit,
-              tipo_cliente: tipoCliFinal,
-              telefono: telefono,
-              email: correo,
-              direccion: direccion,
-              ciudad: ciudad,
-              estado: 'ACTIVO',
-              fecha_actualizacion: fechaActualISO
-            };
-
-            // GUARDA EN BATCH (Cliente)
-            const docClienteRef = doc(db, 'clientes', idClienteRef);
-            batchArray[batchIndex].set(docClienteRef, cliObj, { merge: true });
-            opCount++;
-
-            if (opCount >= 450) {
-              batchArray.push(writeBatch(db));
-              batchIndex++;
-              opCount = 0;
-            }
-          }
-        }
-
-        // Ejecutar todas las transacciones bloqueadas
-        for (const b of batchArray) {
-          await b.commit();
-        }
-
-        alert(`¡Procesamiento Masivo Exitoso!\n\n✨ Facturas Nuevas Creadas: ${creadosCount}\n🔄 Facturas Existentes Actualizadas: ${actualizadosCount}`);
-        setShowModalEcommerce(false);
-        setArchivoCSV(null);
-      } catch (err: any) {
-        alert('Error al procesar el archivo CSV: ' + err.message);
-      } finally {
-        setLoadingEcom(false);
-      }
-    };
-
-    reader.readAsText(archivoCSV);
-  };
-
-  // EXPORTAR CONSOLIDADO MASIVO COMPATIBLE CON SOFTWARE CONTABLE Y DIAN
   const handleExportarReporteFiscal = () => {
-    if (facturasParaExportar.length === 0) {
+    if (!facturasParaExportar || facturasParaExportar.length === 0) {
       return alert('No hay comprobantes registrados en los filtros actuales para exportar.');
     }
 
@@ -391,12 +168,12 @@ export default function FacturasPage() {
       const fResp = f.cliente_responsabilidad_fiscal || 'R-99-PN';
 
       const primerItem = Array.isArray(f.items) && f.items.length > 0 ? f.items[0] : null;
-      const fProd = (primerItem?.nombre || 'Producto E-Commerce').replace(/;/g, ' ');
+      const fProd = (primerItem?.nombre || 'Producto Múltiple').replace(/;/g, ' ');
       const fCant = primerItem?.cantidad || 1;
       const fPrecio = primerItem?.precio || f.total || 0;
 
-      const fMetodo = f.metodo_pago || 'CONTRAENTREGA';
-      const fCanal = (f.vendedor_nombre || 'E-Commerce Bot').replace(/;/g, ' ');
+      const fMetodo = f.metodo_pago || 'EFECTIVO';
+      const fCanal = (f.vendedor_nombre || 'Vendedor Local').replace(/;/g, ' ');
       const fSub = f.subtotal || f.total || 0;
       const fIva = f.iva_monto || 0;
       const fTot = f.total || 0;
@@ -410,52 +187,39 @@ export default function FacturasPage() {
     const link = document.createElement('a');
     link.href = url;
     const nombreMes = mesesDelAnio[mesFiltro].nombre;
-    link.setAttribute('download', `Consolidado_Facturacion_Electronica_DIAN_${nombreMes}_${anioFiltro}.csv`);
+    link.setAttribute('download', `Consolidado_Documentos_Venta_DIAN_${nombreMes}_${anioFiltro}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">
+    <div className="min-h-screen bg-[#F4F5F7] text-gray-800 p-6 md:p-10 font-sans relative pb-20">
       
       {/* CABECERA PRINCIPAL */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-700/60 pb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-gray-200 pb-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-[#0DE8C0] animate-pulse"></span>
-            <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
-              {esVendedor ? `Comprobantes Emitidos por ${userAuth?.nombre}` : 'Control Fiscal & Integración E-Commerce DIAN'}
+            <span className="w-2.5 h-2.5 rounded-full bg-[#FFD800] border border-gray-800 animate-pulse"></span>
+            <span className="text-[11px] font-satoshi-black text-gray-900 uppercase tracking-wider font-bold">
+              Pre-Facturación & Archivos Contables
             </span>
           </div>
-          <h1 className="text-3xl font-black text-white tracking-tight font-satoshi-black">
-            Facturación
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight font-satoshi-black">
+            PRE-FACTURACIÓN
           </h1>
-          <p className="text-xs text-[#A0AEC0] mt-1 font-satoshi-regular max-w-xl">
-            Carga masiva completa con datos fiscales del cliente, IVA discriminado y exportación contable.
+          <p className="text-xs text-gray-500 mt-1 font-satoshi-regular max-w-xl">
+            Historial de ventas en POS y Bodegas. Exporta el reporte contable listo para la DIAN.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-3 shrink-0">
-          {!esVendedor && (
-            <button
-              type="button"
-              onClick={() => setShowModalEcommerce(true)}
-              className="bg-[#1D2935] border border-[#0DE8C0] text-[#0DE8C0] hover:bg-[#0DE8C0]/10 font-satoshi-black px-5 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg flex items-center gap-2"
-            >
-              <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              <span>Subir Archivo Masivo E-Commerce</span>
-            </button>
-          )}
-
           <button
             type="button"
             onClick={handleExportarReporteFiscal}
-            className="bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black px-5 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg flex items-center gap-2"
+            className="bg-[#FFD800] hover:bg-[#FDCB13] text-[#222222] font-satoshi-black px-5 py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center gap-2 font-bold"
           >
-            <svg className="w-4 h-4 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-[#222222] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             <span>Exportar Consolidado Contable (CSV)</span>
@@ -464,41 +228,41 @@ export default function FacturasPage() {
       </div>
 
       {/* SELECTOR DE PERIODO */}
-      <div className="bg-[#253443] border border-[#0DE8C0]/40 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#0DE8C0]/10 flex items-center justify-center text-[#0DE8C0] shrink-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-[#222222] text-[#FFD800] flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
           <div>
-            <span className="text-xs font-satoshi-black text-white uppercase tracking-wider block">
+            <span className="text-xs font-satoshi-black text-gray-900 uppercase tracking-wider block font-bold">
               PERIODO FISCAL ACTIVO
             </span>
-            <span className="text-[11px] text-[#A0AEC0]">
-              Filtra las facturas importadas por mes y año.
+            <span className="text-[11px] text-gray-500 font-satoshi-regular">
+              Filtra las ventas por mes y año.
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
           <select
-            className="bg-[#1D2935] border border-slate-700 text-xs text-[#0DE8C0] font-satoshi-black rounded-xl px-3 py-2.5 focus:outline-none"
+            className="bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 text-xs text-gray-900 font-satoshi-black rounded-xl px-3 py-2.5 focus:outline-none transition-all cursor-pointer"
             value={mesFiltro}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMesFiltro(Number(e.target.value))}
           >
             {mesesDelAnio.map(m => (
-              <option key={m.id} value={m.id} className="bg-[#1D2935] text-white">{m.nombre}</option>
+              <option key={m.id} value={m.id} className="bg-white text-gray-900">{m.nombre}</option>
             ))}
           </select>
 
           <select
-            className="bg-[#1D2935] border border-slate-700 text-xs text-white font-satoshi-black rounded-xl px-3 py-2.5 focus:outline-none"
+            className="bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 text-xs text-gray-900 font-satoshi-black rounded-xl px-3 py-2.5 focus:outline-none transition-all cursor-pointer"
             value={anioFiltro}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAnioFiltro(Number(e.target.value))}
           >
             {listaAnios.map(a => (
-              <option key={a} value={a} className="bg-[#1D2935] text-white">{a}</option>
+              <option key={a} value={a} className="bg-white text-gray-900">{a}</option>
             ))}
           </select>
         </div>
@@ -506,34 +270,34 @@ export default function FacturasPage() {
 
       {/* TARJETAS MÉTRICAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36">
-          <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase">TOTAL FACTURADO ({mesesDelAnio[mesFiltro].nombre.toUpperCase()})</span>
-          <span className="text-3xl font-black text-white font-satoshi-black">{formatoCOP(totalFacturadoMes)}</span>
-          <p className="text-xs text-[#A0AEC0]">Acumulado fiscal importado</p>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between h-36">
+          <span className="text-[11px] font-satoshi-black text-gray-700 uppercase font-bold">TOTAL FACTURADO ({mesesDelAnio[mesFiltro].nombre.toUpperCase()})</span>
+          <span className="text-3xl font-black text-gray-900 font-satoshi-black">{formatoCOP(totalFacturadoMes)}</span>
+          <p className="text-xs text-gray-500 font-satoshi-regular">Acumulado fiscal importado</p>
         </div>
 
-        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36">
-          <span className="text-[11px] font-satoshi-black text-[#6884C5] uppercase">COMPROBANTES EMITIDOS</span>
-          <span className="text-4xl font-black text-white font-satoshi-black">{totalEmitidasMes}</span>
-          <p className="text-xs text-[#A0AEC0]">Órdenes validadas</p>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between h-36">
+          <span className="text-[11px] font-satoshi-black text-gray-700 uppercase font-bold">COMPROBANTES EMITIDOS</span>
+          <span className="text-4xl font-black text-gray-900 font-satoshi-black">{totalEmitidasMes}</span>
+          <p className="text-xs text-gray-500 font-satoshi-regular">Órdenes validadas</p>
         </div>
 
-        <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-36">
-          <span className="text-[11px] font-satoshi-black text-slate-400 uppercase">NOTAS DE CRÉDITO / ANULADAS</span>
-          <span className="text-4xl font-black text-slate-300 font-satoshi-black">{totalAnuladasMes}</span>
-          <p className="text-xs text-[#A0AEC0]">Cancelaciones de envío</p>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between h-36">
+          <span className="text-[11px] font-satoshi-black text-gray-700 uppercase font-bold">NOTAS DE CRÉDITO / ANULADAS</span>
+          <span className="text-4xl font-black text-gray-400 font-satoshi-black">{totalAnuladasMes}</span>
+          <p className="text-xs text-gray-500 font-satoshi-regular">Cancelaciones de envío</p>
         </div>
       </div>
 
       {/* BÚSQUEDA Y FILTROS DE ESTADO / ORDEN DE FECHA */}
-      <div className="bg-[#253443] border border-slate-700/50 rounded-2xl p-4 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-6 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm">
         <div className="relative w-full md:w-80">
-          <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input 
             type="text" 
-            className="bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-[#A0AEC0] w-full"
+            className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none transition-all font-satoshi-regular"
             placeholder="Buscar Orden, Cliente, NIT o Producto..."
             value={searchQuery}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
@@ -542,41 +306,41 @@ export default function FacturasPage() {
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
           {/* SELECTOR DE ORDEN POR FECHA */}
-          <div className="flex items-center gap-2 bg-[#1D2935] px-3 py-1.5 rounded-xl border border-slate-700">
-            <span className="text-[10px] font-satoshi-black text-[#A0AEC0] uppercase">Orden:</span>
+          <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200">
+            <span className="text-[10px] font-satoshi-black text-gray-500 uppercase font-bold">Orden:</span>
             <select
-              className="bg-transparent text-xs text-[#0DE8C0] font-satoshi-black focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs text-gray-900 font-satoshi-black focus:outline-none cursor-pointer"
               value={ordenFecha}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setOrdenFecha(e.target.value as any)}
             >
-              <option value="NUEVAS_PRIMERO" className="bg-[#1D2935] text-white">Más Nuevas Primero</option>
-              <option value="ANTIGUAS_PRIMERO" className="bg-[#1D2935] text-white">Más Antiguas Primero</option>
+              <option value="NUEVAS_PRIMERO" className="bg-white text-gray-900">Más Nuevas Primero</option>
+              <option value="ANTIGUAS_PRIMERO" className="bg-white text-gray-900">Más Antiguas Primero</option>
             </select>
           </div>
 
           {/* FILTROS DE ESTADO */}
-          <div className="flex gap-1 bg-[#1D2935] p-1 rounded-xl border border-slate-700">
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
             <button 
               onClick={() => setFiltroEstado('TODAS')} 
-              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'TODAS' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'text-slate-400 hover:text-white'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'TODAS' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
             >
               Todas
             </button>
             <button 
               onClick={() => setFiltroEstado('EMITIDA')} 
-              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'EMITIDA' ? 'bg-[#6884C5] text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'EMITIDA' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
             >
               Emitidas
             </button>
             <button 
               onClick={() => setFiltroEstado('PENDIENTE')} 
-              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'PENDIENTE' ? 'bg-amber-500 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'PENDIENTE' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
             >
               Pendientes
             </button>
             <button 
               onClick={() => setFiltroEstado('ANULADA')} 
-              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'ANULADA' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${filtroEstado === 'ANULADA' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
             >
               Anuladas
             </button>
@@ -585,52 +349,54 @@ export default function FacturasPage() {
       </div>
 
       {/* TABLA PRINCIPAL DE FACTURAS */}
-      <div className="bg-[#253443] border border-slate-700/50 rounded-2xl shadow-xl overflow-x-auto">
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-x-auto">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="bg-[#1D2935] text-[11px] font-satoshi-black text-[#A0AEC0] uppercase border-b border-slate-700">
-              <th className="p-4">N° Factura</th>
-              <th className="p-4">Orden Ref.</th>
-              <th className="p-4">Plataforma</th>
+            <tr className="bg-gray-50 text-[11px] font-satoshi-black text-gray-600 uppercase border-b border-gray-200">
+              <th className="p-4 rounded-tl-2xl">N° Documento</th>
+              <th className="p-4">Guía / Orden Ref.</th>
+              <th className="p-4">Vendedor</th>
               <th className="p-4">Cliente / NIT / Correo</th>
               <th className="p-4">Dirección & Ciudad</th>
               <th className="p-4">Producto & Cant.</th>
               <th className="p-4 text-right">Monto Total</th>
               <th className="p-4 text-center">Estado</th>
-              <th className="p-4 text-center">Acciones</th>
+              <th className="p-4 text-center rounded-tr-2xl">Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-700/60 font-satoshi-regular">
+          <tbody className="divide-y divide-gray-100 font-satoshi-regular text-gray-800">
             {facturasPaginadas.map((f, idx) => {
               const item = Array.isArray(f.items) && f.items.length > 0 ? f.items[0] : null;
               const isAnulada = String(f.estado || '').toUpperCase() === 'ANULADA';
 
               return (
-                <tr key={f.id_doc || idx} className={`hover:bg-[#1D2935]/80 transition ${isAnulada ? 'bg-red-950/20' : ''}`}>
-                  <td className="p-4 font-mono font-bold text-white">{f.id_factura}</td>
-                  <td className="p-4 font-mono text-[#0DE8C0]">{f.orden_referencia || 'N/A'}</td>
-                  <td className="p-4 font-satoshi-black text-slate-200">{f.vendedor_nombre}</td>
+                <tr key={f.id_doc || f.id_factura || idx} className={`hover:bg-gray-50/50 transition ${isAnulada ? 'bg-red-50/50' : ''}`}>
+                  <td className="p-4 font-mono font-bold text-gray-900">{f.id_factura}</td>
+                  <td className="p-4 font-mono text-gray-700 font-bold">{f.orden_referencia || 'N/A'}</td>
+                  <td className="p-4 font-satoshi-black text-gray-900 font-bold">{f.vendedor_nombre}</td>
                   <td className="p-4">
-                    <div className="font-satoshi-black text-white">{f.cliente_nombre || 'Consumidor Final'}</div>
-                    <div className="text-[10px] text-slate-400">NIT: {f.cliente_nit || 'N/A'}</div>
-                    <div className="text-[10px] text-[#A0AEC0]">{f.cliente_correo || 'N/A'}</div>
+                    <div className="font-satoshi-black text-gray-900 font-bold">{f.cliente_nombre || 'Consumidor Final'}</div>
+                    <div className="text-[10px] text-gray-500">NIT: {f.cliente_nit || 'N/A'}</div>
+                    <div className="text-[10px] text-gray-500">{f.cliente_correo || 'N/A'}</div>
                   </td>
                   <td className="p-4">
-                    <div className="text-slate-300 truncate max-w-xs">{f.cliente_direccion || 'N/A'}</div>
-                    <div className="text-[10px] text-slate-400">{f.cliente_ciudad || 'Cali'}</div>
+                    <div className="text-gray-700 truncate max-w-xs">{f.cliente_direccion || 'N/A'}</div>
+                    <div className="text-[10px] text-gray-500">{f.cliente_ciudad || 'Cali'}</div>
                   </td>
                   <td className="p-4">
-                    <div className="font-satoshi-black text-slate-200 truncate max-w-xs">{item?.nombre || 'Producto E-Commerce'}</div>
-                    <div className="text-[10px] text-[#0DE8C0] font-mono">Cant: {item?.cantidad || 1} u</div>
+                    <div className="font-satoshi-black text-gray-900 font-bold truncate max-w-xs">{item?.nombre || 'Producto E-Commerce'}</div>
+                    <div className="text-[10px] text-gray-600 font-mono">
+                      Cant: {item?.cantidad || 1} u {Array.isArray(f.items) && f.items.length > 1 ? `(+${f.items.length - 1} más)` : ''}
+                    </div>
                   </td>
-                  <td className="p-4 text-right font-satoshi-black text-[#0DE8C0]">{formatoCOP(f.total)}</td>
+                  <td className="p-4 text-right font-satoshi-black text-gray-900 font-bold">{formatoCOP(f.total)}</td>
                   
                   {/* ESTADO VISUAL DE LA FACTURA */}
                   <td className="p-4 text-center">
-                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-satoshi-black ${
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-satoshi-black font-bold ${
                       isAnulada 
-                        ? 'bg-red-950/80 text-red-400 border border-red-800/40' 
-                        : (f.estado === 'PENDIENTE' ? 'bg-amber-900/80 text-amber-400 border border-amber-800/40' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/40')
+                        ? 'bg-red-100 text-red-800 border border-red-200' 
+                        : (f.estado === 'PENDIENTE' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200')
                     }`}>
                       {f.estado || 'EMITIDA'}
                     </span>
@@ -639,7 +405,7 @@ export default function FacturasPage() {
                   <td className="p-4 text-center">
                     <button
                       onClick={() => { setSelectedFactura(f); setShowModalDetail(true); }}
-                      className="bg-[#1D2935] text-[#0DE8C0] border border-[#0DE8C0]/40 font-satoshi-black px-3 py-1.5 rounded-lg hover:bg-[#0DE8C0]/10 transition"
+                      className="bg-gray-100 text-gray-900 border border-gray-300 font-satoshi-black px-3 py-1.5 rounded-lg hover:bg-gray-200 transition font-bold"
                     >
                       Ver Comprobante
                     </button>
@@ -649,17 +415,17 @@ export default function FacturasPage() {
             })}
             {facturasPaginadas.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-slate-400">No hay facturas registradas en este periodo. Usa el botón "Subir Archivo Masivo" para cargar tus pedidos.</td>
+                <td colSpan={9} className="p-8 text-center text-gray-500">No hay facturas registradas en este periodo.</td>
               </tr>
             )}
           </tbody>
         </table>
 
-        {/* PIE DE TABLA: CONTROLES DE PAGINACIÓN DE 50 VENTAS */}
+        {/* PIE DE TABLA: CONTROLES DE PAGINACIÓN */}
         {totalFacturasCount > 0 && (
-          <div className="bg-[#1D2935] border-t border-slate-700/80 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
-            <div className="text-slate-400 font-satoshi-regular">
-              Mostrando <span className="font-satoshi-black text-white">{indiceInicial + 1}</span> a <span className="font-satoshi-black text-white">{Math.min(indiceInicial + ventasPorPagina, totalFacturasCount)}</span> de <span className="font-satoshi-black text-[#0DE8C0]">{totalFacturasCount}</span> facturas
+          <div className="bg-gray-50 border-t border-gray-200 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
+            <div className="text-gray-500 font-satoshi-regular">
+              Mostrando <span className="font-satoshi-black text-gray-900 font-bold">{indiceInicial + 1}</span> a <span className="font-satoshi-black text-gray-900 font-bold">{Math.min(indiceInicial + ventasPorPagina, totalFacturasCount)}</span> de <span className="font-satoshi-black text-gray-900 font-bold">{totalFacturasCount}</span> documentos
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -667,7 +433,7 @@ export default function FacturasPage() {
                 type="button"
                 onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
                 disabled={paginaActual === 1}
-                className="px-3 py-1.5 bg-[#253443] border border-slate-700 rounded-lg text-white font-satoshi-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+                className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-700 font-satoshi-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 transition font-bold"
               >
                 Anterior
               </button>
@@ -680,14 +446,14 @@ export default function FacturasPage() {
 
                     return (
                       <React.Fragment key={numPag}>
-                        {mostrarPuntos && <span className="text-slate-500 px-1">...</span>}
+                        {mostrarPuntos && <span className="text-gray-400 px-1">...</span>}
                         <button
                           type="button"
                           onClick={() => setPaginaActual(numPag)}
-                          className={`w-7 h-7 rounded-lg text-xs font-satoshi-black transition ${
+                          className={`w-7 h-7 rounded-lg text-xs font-satoshi-black transition font-bold ${
                             paginaActual === numPag
-                              ? 'bg-[#0DE8C0] text-[#1D2935]'
-                              : 'bg-[#253443] text-slate-300 hover:bg-slate-700'
+                              ? 'bg-[#FFD800] text-[#222222]'
+                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
                           }`}
                         >
                           {numPag}
@@ -701,7 +467,7 @@ export default function FacturasPage() {
                 type="button"
                 onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
                 disabled={paginaActual === totalPaginas}
-                className="px-3 py-1.5 bg-[#253443] border border-slate-700 rounded-lg text-white font-satoshi-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+                className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-700 font-satoshi-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 transition font-bold"
               >
                 Siguiente
               </button>
@@ -710,151 +476,65 @@ export default function FacturasPage() {
         )}
       </div>
 
-      {/* MODAL CARGA MASIVA - DISEÑO ESTRUCTURADO EN PASOS */}
-      {showModalEcommerce && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans">
-            <div className="flex justify-between items-center mb-6 border-b border-slate-700/60 pb-3">
-              <h3 className="text-lg font-satoshi-black text-white uppercase">CARGA MASIVA DE FACTURAS</h3>
-              <button onClick={() => setShowModalEcommerce(false)} className="text-slate-400 hover:text-white transition">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={handleProcesarCargaMasiva} className="space-y-4">
-              <div>
-                <label className="block text-xs font-satoshi-black text-slate-300 mb-1.5 uppercase">
-                  Plataforma / Canal Predefinido
-                </label>
-                <select
-                  className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-3 text-xs text-white font-satoshi-black focus:outline-none focus:border-[#0DE8C0]"
-                  value={canalPlataforma}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCanalPlataforma(e.target.value)}
-                >
-                  <option value="DROPI">Dropi Colombia</option>
-                  <option value="VENDELO">Véndelo App</option>
-                  <option value="MASTER">Master E-Commerce</option>
-                  <option value="SHOPIFY">Shopify Store</option>
-                </select>
-              </div>
-
-              {/* PASO 1: DESCARGA DE PLANTILLA */}
-              <div className="bg-[#1D2935] border border-slate-700/80 rounded-xl p-4 text-xs text-slate-300 space-y-2">
-                <p className="font-satoshi-black text-white">PASO 1: Descarga la plantilla estructurada</p>
-                <p className="text-[11px] text-[#A0AEC0]">
-                  Soporta Tipo Doc, Dirección, Ciudad, Teléfono, Responsabilidad Fiscal e IVA. Indexa clientes automáticamente en el Directorio.
-                </p>
-                <button 
-                  type="button"
-                  onClick={handleDescargarPlantilla}
-                  className="bg-[#6884C5] text-white font-satoshi-black px-4 py-2 rounded-xl text-xs uppercase shadow hover:bg-[#5772b0] transition flex items-center gap-1.5"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  <span>DESCARGAR PLANTILLA CSV</span>
-                </button>
-              </div>
-
-              {/* PASO 2: ADJUNTAR ARCHIVO CON ÁREA PUNTEADA */}
-              <div 
-                onClick={() => fileInputEcomRef.current?.click()}
-                className="border-2 border-dashed border-slate-700/80 rounded-xl p-6 text-center space-y-2 bg-[#1D2935] cursor-pointer hover:border-[#0DE8C0]/60 transition"
-              >
-                <p className="font-satoshi-black text-xs text-white">PASO 2: Adjunta tu archivo (.csv)</p>
-                <p className="text-xs text-[#A0AEC0]">
-                  {archivoCSV ? `📄 ${archivoCSV.name}` : 'Seleccionar archivo Ningún archivo seleccionado'}
-                </p>
-                <input 
-                  type="file" 
-                  ref={fileInputEcomRef}
-                  accept=".csv"
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setArchivoCSV(e.target.files ? e.target.files[0] : null)}
-                  className="hidden"
-                  required
-                />
-              </div>
-
-              {/* BOTONES INFERIORES */}
-              <div className="flex gap-3 pt-4 border-t border-slate-700/60">
-                <button 
-                  type="button" 
-                  onClick={() => setShowModalEcommerce(false)}
-                  className="flex-1 bg-[#1D2935] text-slate-300 font-satoshi-black py-3 rounded-xl text-xs uppercase hover:bg-slate-800 transition"
-                >
-                  CANCELAR
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={loadingEcom || !archivoCSV}
-                  className="flex-1 bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5 transition"
-                >
-                  {loadingEcom ? 'Procesando Carga...' : 'PROCESAR E INDEXAR'}
-                </button>
-              </div>
-
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DETALLE / COMPROBANTE FISCAL */}
+      {/* MODAL DETALLE / DOCUMENTO DE VENTA */}
       {showModalDetail && selectedFactura && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white text-slate-900 rounded-2xl w-full max-w-sm p-6 shadow-2xl font-mono text-xs relative space-y-4">
-            <button onClick={() => setShowModalDetail(false)} className="absolute right-4 top-4 text-slate-400 hover:text-slate-800">✕</button>
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white text-gray-900 rounded-3xl w-full max-w-sm p-6 shadow-2xl font-mono text-xs relative space-y-4 border border-gray-200">
+            <button onClick={() => setShowModalDetail(false)} className="absolute right-4 top-4 text-gray-400 hover:text-gray-700 transition">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
 
-            <div className="text-center border-b border-dashed border-slate-300 pb-3 space-y-1">
-              <h2 className="font-bold text-base uppercase">FACTURA / COMPROBANTE FISCAL</h2>
-              <p className="text-[10px] text-slate-600">{selectedFactura.vendedor_nombre}</p>
-              <p className="text-[10px] text-slate-500">N° {selectedFactura.id_factura}</p>
-              <p className="text-[10px] text-slate-500">Ref Orden: {selectedFactura.orden_referencia || 'N/A'}</p>
+            <div className="text-center border-b border-dashed border-gray-300 pb-3 space-y-1">
+              <h2 className="font-bold text-base uppercase font-satoshi-black">DOCUMENTO DE VENTA</h2>
+              <p className="text-[10px] text-gray-600 font-bold">{selectedFactura.vendedor_nombre}</p>
+              <p className="text-[10px] text-gray-500">N° {selectedFactura.id_factura}</p>
+              <p className="text-[10px] text-gray-500">Guía / Ref Orden: {selectedFactura.orden_referencia || 'N/A'}</p>
             </div>
 
-            <div className="border-b border-dashed border-slate-300 pb-2 text-[10px] space-y-0.5">
-              <p>CLIENTE: <span className="font-bold">{selectedFactura.cliente_nombre || 'Consumidor Final'}</span></p>
-              <p>NIT/CC: {selectedFactura.cliente_nit || 'N/A'} (Tipo: {selectedFactura.cliente_tipo_doc || '13'})</p>
-              <p>CORREO: {selectedFactura.cliente_correo || 'N/A'}</p>
-              <p>TELÉFONO: {selectedFactura.cliente_telefono || 'N/A'}</p>
-              <p>DIRECCIÓN: {selectedFactura.cliente_direccion || 'N/A'}</p>
-              <p>CIUDAD: {selectedFactura.cliente_ciudad || 'Cali'}</p>
-              <p>RESP. FISCAL: {selectedFactura.cliente_responsabilidad_fiscal || 'R-99-PN'}</p>
-              <p>MÉTODO: {selectedFactura.metodo_pago || 'CONTRAENTREGA'}</p>
+            <div className="border-b border-dashed border-gray-300 pb-2 text-[10px] space-y-0.5 text-gray-700">
+              <p><strong className="text-gray-900">CLIENTE:</strong> {selectedFactura.cliente_nombre || 'Consumidor Final'}</p>
+              <p><strong className="text-gray-900">NIT/CC:</strong> {selectedFactura.cliente_nit || 'N/A'} (Tipo: {selectedFactura.cliente_tipo_doc || '13'})</p>
+              <p><strong className="text-gray-900">CORREO:</strong> {selectedFactura.cliente_correo || 'N/A'}</p>
+              <p><strong className="text-gray-900">TELÉFONO:</strong> {selectedFactura.cliente_telefono || 'N/A'}</p>
+              <p><strong className="text-gray-900">DIRECCIÓN:</strong> {selectedFactura.cliente_direccion || 'N/A'}</p>
+              <p><strong className="text-gray-900">CIUDAD:</strong> {selectedFactura.cliente_ciudad || 'Cali'}</p>
+              <p><strong className="text-gray-900">RESP. FISCAL:</strong> {selectedFactura.cliente_responsabilidad_fiscal || 'R-99-PN'}</p>
+              <p><strong className="text-gray-900">MÉTODO:</strong> {selectedFactura.metodo_pago || 'EFECTIVO'}</p>
             </div>
 
             {/* DETALLE DE AUDITORÍA SI LA FACTURA ESTÁ ANULADA */}
             {String(selectedFactura.estado || '').toUpperCase() === 'ANULADA' && (
               <div className="bg-red-50 border border-red-200 p-2.5 rounded-xl text-[10px] space-y-0.5 text-red-800">
-                <p className="font-bold uppercase">⚠️ VENTA ANULADA / REVERSADA</p>
+                <p className="font-bold uppercase">VENTA ANULADA / REVERSADA</p>
                 <p>Motivo: {selectedFactura.motivo_anulacion || 'Sin motivo especificado'}</p>
                 <p>Anulado por: {selectedFactura.usuario_anulo_nombre || 'Sistema'}</p>
               </div>
             )}
 
-            <div className="border-b border-dashed border-slate-300 pb-3">
+            <div className="border-b border-dashed border-gray-300 pb-3">
               {Array.isArray(selectedFactura.items) && selectedFactura.items.map((it: any, i: number) => (
                 <div key={i} className="flex justify-between items-start text-[11px] mb-1">
                   <div>
-                    <div className="font-bold">{it.nombre}</div>
-                    <div className="text-[9px] text-slate-500">Cant: {it.cantidad} x {formatoCOP(it.precio)} (IVA {it.tarifaIva || 19}%)</div>
+                    <div className="font-bold text-gray-900">{it.nombre}</div>
+                    <div className="text-[9px] text-gray-500">Cant: {it.cantidad} x {formatoCOP(it.precio)} (IVA {it.tarifaIva || 19}%)</div>
                   </div>
-                  <span className="font-bold">{formatoCOP(it.cantidad * it.precio)}</span>
+                  <span className="font-bold text-gray-900">{formatoCOP(it.cantidad * it.precio)}</span>
                 </div>
               ))}
             </div>
 
             <div className="space-y-1 pt-1 text-right">
-              <div className="flex justify-between text-[11px] text-slate-600">
+              <div className="flex justify-between text-[11px] text-gray-600">
                 <span>Subtotal Gravable:</span>
-                <span>{formatoCOP(selectedFactura.subtotal)}</span>
+                <span className="font-bold text-gray-900">{formatoCOP(selectedFactura.subtotal)}</span>
               </div>
-              <div className="flex justify-between text-[11px] text-slate-600">
+              <div className="flex justify-between text-[11px] text-gray-600">
                 <span>IVA Discriminado:</span>
-                <span>{formatoCOP(selectedFactura.iva_monto)}</span>
+                <span className="font-bold text-gray-900">{formatoCOP(selectedFactura.iva_monto)}</span>
               </div>
-              <div className="flex justify-between text-sm font-black pt-1 border-t border-slate-900">
+              <div className="flex justify-between text-sm font-black pt-1 border-t border-gray-900 text-gray-900">
                 <span>TOTAL:</span>
                 <span>{formatoCOP(selectedFactura.total)}</span>
               </div>
@@ -862,9 +542,9 @@ export default function FacturasPage() {
 
             <button
               onClick={() => window.print()}
-              className="w-full bg-[#0DE8C0] text-[#1D2935] font-satoshi-black py-3 rounded-xl uppercase shadow flex items-center justify-center gap-2"
+              className="w-full bg-[#222222] hover:bg-[#333333] text-white font-satoshi-black py-3 rounded-xl uppercase shadow-sm flex items-center justify-center gap-2 font-bold"
             >
-              <svg className="w-4 h-4 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
               </svg>
               <span>Imprimir Comprobante PDF</span>
