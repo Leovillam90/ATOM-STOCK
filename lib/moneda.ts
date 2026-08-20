@@ -5,7 +5,6 @@ export interface MonedaConfig {
   locale: string;
 }
 
-// Lista Oficial de Divisas LATAM
 export const MONEDAS: MonedaConfig[] = [
   { codigo: 'COP', nombre: 'Colombia (COP)', simbolo: '$', locale: 'es-CO' },
   { codigo: 'USD', nombre: 'Estados Unidos (USD)', simbolo: '$', locale: 'en-US' },
@@ -18,13 +17,26 @@ export const MONEDAS: MonedaConfig[] = [
   { codigo: 'VES', nombre: 'Venezuela (VES)', simbolo: 'Bs', locale: 'es-VE' }
 ];
 
-/**
- * Formatea cualquier valor numérico a la moneda indicada.
- * Si no se pasa moneda, toma COP por defecto.
- */
+export const MAPA_INDICATIVO_MONEDA: { [key: string]: string } = {
+  '+57': 'COP',
+  '+593': 'USD',
+  '+52': 'MXN',
+  '+595': 'USD',
+  '+51': 'PEN',
+  '+56': 'CLP',
+  '+507': 'USD',
+  '+502': 'GTQ',
+  '+55': 'BRL',
+  '+54': 'USD',
+  '+58': 'VES',
+};
+
+export const obtenerMonedaPorIndicativo = (indicativo: string): string => {
+  return MAPA_INDICATIVO_MONEDA[indicativo] || 'COP';
+};
+
 export const formatearMonedaGlobal = (monto: number, codigoMoneda: string = 'COP'): string => {
   const config = MONEDAS.find(m => m.codigo === codigoMoneda) || MONEDAS[0];
-  
   return new Intl.NumberFormat(config.locale, {
     style: 'currency',
     currency: config.codigo,
