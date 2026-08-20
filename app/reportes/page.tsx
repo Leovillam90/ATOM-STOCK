@@ -10,7 +10,7 @@ export default function ReportesPage() {
   const [productos, setProductos] = useState<any[]>([]);
   const [sucursales, setSucursales] = useState<any[]>([]);
 
-  // FILTRO DE PERIODO FISCAL (MES Y AÑO ATOM)
+  // FILTRO DE PERIODO FISCAL (MES Y AÑO LOBO STOCK)
   const hoy = new Date();
   const [mesFiltro, setMesFiltro] = useState<number>(hoy.getMonth());
   const [anioFiltro, setAnioFiltro] = useState<number>(hoy.getFullYear());
@@ -46,7 +46,7 @@ export default function ReportesPage() {
   }, [agruparPor, mesFiltro, anioFiltro]);
 
   // ==========================================================
-  // ESCUCHAR FIRESTORE (⚠️ Deuda Técnica: Falta paginación o filtro en DB)
+  // ESCUCHAR FIRESTORE
   // ==========================================================
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
@@ -77,7 +77,7 @@ export default function ReportesPage() {
   }, [userAuth]);
 
   // ==========================================================
-  // 🧠 CÁLCULOS OPTIMIZADOS CON USEMEMO (P&L y Unit Economics)
+  // CÁLCULOS OPTIMIZADOS CON USEMEMO (P&L y Unit Economics)
   // ==========================================================
   const metricasGenerales = useMemo(() => {
     // 1. Filtrado de Ventas por Fecha
@@ -180,7 +180,7 @@ export default function ReportesPage() {
   }, [ventas, productos, mesFiltro, anioFiltro]);
 
   // ==========================================================
-  // 🧠 CÁLCULO OPTIMIZADO: BALANCE DE INVENTARIO
+  // BALANCE DE INVENTARIO
   // ==========================================================
   const capitalInmovilizadoStock = useMemo(() => {
     return productos.reduce((acc, p) => {
@@ -213,7 +213,7 @@ export default function ReportesPage() {
   };
 
   // ==========================================================
-  // 🧠 CÁLCULO OPTIMIZADO: AGRUPACIONES Y TOP
+  // AGRUPACIONES Y TOP PRODUCTOS
   // ==========================================================
   const agrupacionData = useMemo(() => {
     const mapa: { [key: string]: { monto: number; unidades: number; ordenes: number } } = {};
@@ -298,41 +298,40 @@ export default function ReportesPage() {
       .slice(0, 5);
   }, [metricasGenerales.ventasEntregadasFiltradas, agrupacionData, seleccionFiltroTop]);
 
-
   return (
-    <div className="min-h-screen bg-[#1D2935] text-slate-100 p-6 md:p-10 font-sans relative pb-20">
+    <div className="min-h-screen bg-[#F4F5F7] text-gray-800 p-6 md:p-10 font-sans relative pb-20">
       
       {/* CABECERA PRINCIPAL */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-700/60 pb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-gray-200 pb-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-[#0DE8C0] animate-pulse"></span>
-            <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
-              Analítica Financiera, P&L e Inventario
+            <span className="w-2.5 h-2.5 rounded-full bg-[#FFD800] border border-gray-800 animate-pulse"></span>
+            <span className="text-[11px] font-satoshi-black text-gray-900 uppercase tracking-wider font-bold">
+              Analítica Financiera
             </span>
           </div>
-          <h1 className="text-3xl font-black text-white tracking-tight font-satoshi-black">
-            Reportes y Analítica ATOM
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight font-satoshi-black">
+            REPORTES Y ANALÍTICA
           </h1>
-          <p className="text-xs text-[#A0AEC0] mt-1 font-satoshi-regular max-w-xl">
+          <p className="text-xs text-gray-500 mt-1 font-satoshi-regular max-w-xl">
             Monitoreo en tiempo real del flujo de caja, Estado de Resultados (P&L) y rentabilidad neta.
           </p>
         </div>
       </div>
 
       {/* BARRA SUPERIOR: SELECTOR DE MES Y AÑO */}
-      <div className="bg-[#253443] border border-[#0DE8C0]/40 rounded-2xl p-4 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#0DE8C0]/10 flex items-center justify-center text-[#0DE8C0] shrink-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-9 h-9 rounded-xl bg-[#222222] text-[#FFD800] flex items-center justify-center shrink-0 shadow-sm">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
           <div>
-            <span className="text-xs font-satoshi-black text-white uppercase tracking-wider block">
+            <span className="text-xs font-satoshi-black text-gray-900 uppercase tracking-wider block font-bold">
               PERIODO FISCAL ACTIVO
             </span>
-            <span className="text-[11px] text-[#A0AEC0] font-satoshi-regular">
+            <span className="text-[11px] text-gray-500 font-satoshi-regular">
               Filtra el mes y año que deseas revisar para actualizar métricas e historial.
             </span>
           </div>
@@ -340,24 +339,24 @@ export default function ReportesPage() {
 
         <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
           <select
-            className="bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] text-xs text-[#0DE8C0] font-satoshi-black rounded-xl px-3 py-2 focus:outline-none cursor-pointer flex-1 sm:flex-none"
+            className="bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 text-xs text-gray-900 font-satoshi-black rounded-xl px-3 py-2 focus:outline-none cursor-pointer flex-1 sm:flex-none transition-all"
             value={mesFiltro}
             onChange={(e) => setMesFiltro(Number(e.target.value))}
           >
             {mesesDelAnio.map(m => (
-              <option key={m.id} value={m.id} className="bg-[#1D2935] text-white">
+              <option key={m.id} value={m.id} className="bg-white text-gray-900">
                 {m.nombre}
               </option>
             ))}
           </select>
 
           <select
-            className="bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] text-xs text-white font-satoshi-black rounded-xl px-3 py-2 focus:outline-none cursor-pointer"
+            className="bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 text-xs text-gray-900 font-satoshi-black rounded-xl px-3 py-2 focus:outline-none cursor-pointer transition-all"
             value={anioFiltro}
             onChange={(e) => setAnioFiltro(Number(e.target.value))}
           >
             {listaAnios.map(a => (
-              <option key={a} value={a} className="bg-[#1D2935] text-white">
+              <option key={a} value={a} className="bg-white text-gray-900">
                 {a}
               </option>
             ))}
@@ -365,18 +364,16 @@ export default function ReportesPage() {
         </div>
       </div>
 
-      {/* METRICAS HERO */}
+      {/* METRICAS HERO CON ÍCONOS 2D VECTORIALES */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
         
         {/* VENTAS ENTREGADAS (6 COLS) */}
-        <div className="lg:col-span-6 bg-[#253443] border border-[#0DE8C0]/40 rounded-2xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between h-44 shadow-[#0DE8C0]/5">
-          <div className="absolute top-0 right-0 w-40 h-40 bg-[#0DE8C0]/10 blur-3xl pointer-events-none rounded-full"></div>
-          
+        <div className="lg:col-span-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden flex flex-col justify-between h-44">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase tracking-wider">
+            <span className="text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider font-bold">
               VENTAS ENTREGADAS ({mesesDelAnio[mesFiltro].nombre.toUpperCase()})
             </span>
-            <div className="w-9 h-9 rounded-full bg-[#0DE8C0]/10 flex items-center justify-center text-[#0DE8C0]">
+            <div className="w-9 h-9 rounded-xl bg-[#222222] text-[#FFD800] flex items-center justify-center shrink-0 shadow-sm">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -384,65 +381,65 @@ export default function ReportesPage() {
           </div>
 
           <div className="my-1">
-            <div className="text-4xl md:text-5xl font-black text-white font-satoshi-black tracking-tight">
+            <div className="text-4xl md:text-5xl font-black text-gray-900 font-satoshi-black tracking-tight">
               {formatoCOP(metricasGenerales.totalVentasEntregadas)}
             </div>
           </div>
 
-          <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
-            Procesadas exclusivamente en estado <strong className="text-white">ENTREGADO</strong> en {mesesDelAnio[mesFiltro].nombre} del {anioFiltro}
+          <p className="text-xs text-gray-500 font-satoshi-regular">
+            Procesadas exclusivamente en estado <strong className="text-gray-900">ENTREGADO</strong> en {mesesDelAnio[mesFiltro].nombre} del {anioFiltro}
           </p>
         </div>
 
         {/* GANANCIA NETA REAL (3 COLS) */}
-        <div className="lg:col-span-3 bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col justify-between h-44">
+        <div className="lg:col-span-3 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between h-44">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-satoshi-black text-[#C81FDA] uppercase tracking-wider">
+            <span className="text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider font-bold">
               UTILIDAD NETA REAL
             </span>
-            <span className="bg-[#C81FDA] text-white text-[10px] font-satoshi-black px-2 py-0.5 rounded-full font-bold">
+            <span className="bg-[#222222] text-[#FFD800] text-[10px] font-satoshi-black px-2.5 py-0.5 rounded-full font-bold">
               {metricasGenerales.porcentajeMargenNeto}% Neto
             </span>
           </div>
 
           <div className="my-1">
-            <div className="text-3xl font-black text-[#C81FDA] font-satoshi-black tracking-tight">
+            <div className="text-3xl font-black text-emerald-600 font-satoshi-black tracking-tight">
               {formatoCOP(metricasGenerales.gananciaNetaReal)}
             </div>
           </div>
 
-          <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
+          <p className="text-xs text-gray-500 font-satoshi-regular">
             Resultado descontando COGS, IVA y Fulfillment E-Commerce
           </p>
         </div>
 
         {/* UNIDADES Y TICKET PROMEDIO (3 COLS) */}
-        <div className="lg:col-span-3 bg-[#253443] border border-slate-700/50 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-44">
+        <div className="lg:col-span-3 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between h-44">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-satoshi-regular text-[#A0AEC0]">Ticket Promedio (AOV):</span>
-              <span className="text-xs font-black text-[#0DE8C0] font-satoshi-black">{formatoCOP(metricasGenerales.ticketPromedio)}</span>
+              <span className="text-xs font-satoshi-regular text-gray-500">Ticket Promedio (AOV):</span>
+              <span className="text-xs font-black text-gray-900 font-satoshi-black">{formatoCOP(metricasGenerales.ticketPromedio)}</span>
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-700/60 pt-1.5">
-              <span className="text-xs font-satoshi-regular text-[#A0AEC0]">Unidades Entregadas:</span>
-              <span className="text-xs font-black text-white font-satoshi-black">{metricasGenerales.totalUnidadesVendidas} unds</span>
+            <div className="flex items-center justify-between border-t border-gray-100 pt-1.5">
+              <span className="text-xs font-satoshi-regular text-gray-500">Unidades Entregadas:</span>
+              <span className="text-xs font-black text-gray-900 font-satoshi-black">{metricasGenerales.totalUnidadesVendidas} unds</span>
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-700/60 pt-1.5">
-              <span className="text-xs font-satoshi-regular text-[#A0AEC0]">Órdenes Entregadas:</span>
-              <span className="text-xs font-black text-white font-satoshi-black">{metricasGenerales.ventasEntregadasFiltradas.length} ops</span>
+            <div className="flex items-center justify-between border-t border-gray-100 pt-1.5">
+              <span className="text-xs font-satoshi-regular text-gray-500">Órdenes Entregadas:</span>
+              <span className="text-xs font-black text-gray-900 font-satoshi-black">{metricasGenerales.ventasEntregadasFiltradas.length} ops</span>
             </div>
           </div>
 
-          <div className="bg-amber-950/40 border border-amber-500/40 rounded-xl p-2 flex items-center justify-between text-[11px]">
-            <div className="flex items-center gap-1.5 text-amber-400 font-satoshi-black">
-              <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-2 flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-1.5 text-amber-800 font-satoshi-black font-bold">
+              <svg className="w-3.5 h-3.5 shrink-0 text-amber-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <span>Devoluciones:</span>
             </div>
-            <span className="font-satoshi-black text-amber-300">{metricasGenerales.totalDevoluciones} ops ({formatoCOP(metricasGenerales.valorPerdidoDevoluciones)})</span>
+            <span className="font-satoshi-black text-amber-900">{metricasGenerales.totalDevoluciones} ops ({formatoCOP(metricasGenerales.valorPerdidoDevoluciones)})</span>
           </div>
         </div>
 
@@ -452,54 +449,54 @@ export default function ReportesPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
         
         {/* P&L CONTABLE (8 COLS) */}
-        <div className="lg:col-span-8 bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl space-y-4">
-          <div className="border-b border-slate-700/60 pb-3 flex justify-between items-center">
+        <div className="lg:col-span-8 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="border-b border-gray-100 pb-3 flex justify-between items-center">
             <div>
-              <h2 className="text-base font-satoshi-black text-white uppercase tracking-wider flex items-center gap-2">
-                <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <h2 className="text-base font-satoshi-black text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 012-2h2a2 2 0 012 2v6m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2M5 19V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2z" />
                 </svg>
                 <span>Estado de Resultados (P&L Express)</span>
               </h2>
-              <p className="text-xs text-[#A0AEC0]">
+              <p className="text-xs text-gray-500">
                 Desglose contable de ingresos, tributación, costos directos y margen operativo.
               </p>
             </div>
-            <span className="text-[10px] font-mono text-[#0DE8C0] bg-[#1D2935] px-2.5 py-1 rounded-lg border border-slate-700">
+            <span className="text-[10px] font-mono text-gray-800 bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
               Cierre: {mesesDelAnio[mesFiltro].nombre} {anioFiltro}
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-satoshi-regular">
-            <div className="bg-[#1D2935] p-3.5 rounded-xl border border-slate-700/80 space-y-2">
-              <div className="flex justify-between items-center text-slate-300">
+            <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-2">
+              <div className="flex justify-between items-center text-gray-600">
                 <span>Ventas Brutas (+ Descuentos):</span>
-                <span className="font-satoshi-black text-white">{formatoCOP(metricasGenerales.totalVentasBrutas)}</span>
+                <span className="font-satoshi-black text-gray-900">{formatoCOP(metricasGenerales.totalVentasBrutas)}</span>
               </div>
-              <div className="flex justify-between items-center text-amber-400">
+              <div className="flex justify-between items-center text-amber-700">
                 <span>(-) Descuentos Otorgados:</span>
                 <span>-{formatoCOP(metricasGenerales.totalDescuentosOtorgados)}</span>
               </div>
-              <div className="flex justify-between items-center text-red-400">
+              <div className="flex justify-between items-center text-red-600">
                 <span>(-) Impuesto IVA Discriminado:</span>
                 <span>-{formatoCOP(metricasGenerales.totalIvaMontoAcumulado)}</span>
               </div>
-              <div className="flex justify-between items-center font-satoshi-black text-[#0DE8C0] pt-2 border-t border-slate-700">
+              <div className="flex justify-between items-center font-satoshi-black text-gray-900 pt-2 border-t border-gray-200">
                 <span>(=) Ingreso Neto Real (Base Gravable):</span>
                 <span>{formatoCOP(metricasGenerales.baseGravableTotal)}</span>
               </div>
             </div>
 
-            <div className="bg-[#1D2935] p-3.5 rounded-xl border border-slate-700/80 space-y-2">
-              <div className="flex justify-between items-center text-red-300">
+            <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-2">
+              <div className="flex justify-between items-center text-red-600">
                 <span>(-) Costo de Producto (COGS):</span>
                 <span>-{formatoCOP(metricasGenerales.costoDirectoProducto)}</span>
               </div>
-              <div className="flex justify-between items-center text-red-300">
+              <div className="flex justify-between items-center text-red-600">
                 <span>(-) Fulfillment (Solo E-Commerce):</span>
                 <span>-{formatoCOP(metricasGenerales.costoFulfilmentTotal)}</span>
               </div>
-              <div className="flex justify-between items-center font-satoshi-black text-[#C81FDA] pt-3.5 border-t border-slate-700">
+              <div className="flex justify-between items-center font-satoshi-black text-emerald-700 pt-3.5 border-t border-gray-200">
                 <span>(=) GANANCIA NETA OPERATIVA:</span>
                 <span>{formatoCOP(metricasGenerales.gananciaNetaReal)}</span>
               </div>
@@ -508,28 +505,28 @@ export default function ReportesPage() {
         </div>
 
         {/* BALANCE DE STOCK EN BODEGA (4 COLS) */}
-        <div className="lg:col-span-4 bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div className="lg:col-span-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
           <div className="space-y-3">
-            <div className="border-b border-slate-700/60 pb-2">
-              <h2 className="text-base font-satoshi-black text-white uppercase tracking-wider flex items-center gap-2">
-                <svg className="w-4 h-4 text-[#0DE8C0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="border-b border-gray-100 pb-2">
+              <h2 className="text-base font-satoshi-black text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
                 <span>Valoración de Inventario</span>
               </h2>
-              <p className="text-xs text-[#A0AEC0]">Capital activo inmovilizado en bodegas.</p>
+              <p className="text-xs text-gray-500">Capital activo inmovilizado en bodegas.</p>
             </div>
 
-            <div className="bg-[#1D2935] p-4 rounded-xl border border-slate-700/80 space-y-2">
-              <span className="text-[10px] font-satoshi-black text-[#A0AEC0] uppercase block">Capital Inmovilizado (Costo)</span>
-              <div className="text-2xl font-black text-white font-satoshi-black">
+            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2">
+              <span className="text-[10px] font-satoshi-black text-gray-500 uppercase block">Capital Inmovilizado (Costo)</span>
+              <div className="text-2xl font-black text-gray-900 font-satoshi-black">
                 {formatoCOP(capitalInmovilizadoStock)}
               </div>
-              <p className="text-[11px] text-slate-400">Calculado sobre costo de adquisición/importación.</p>
+              <p className="text-[11px] text-gray-500">Calculado sobre costo de adquisición/importación.</p>
             </div>
           </div>
 
-          <div className="text-[10px] text-slate-400 bg-[#1D2935]/50 p-2.5 rounded-xl border border-slate-800">
+          <div className="text-[10px] text-gray-500 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
             💡 Mantener la rotación continua evita la pérdida de margen por depreciación de mercancía.
           </div>
         </div>
@@ -539,26 +536,26 @@ export default function ReportesPage() {
       {/* GRÁFICOS Y COMPARATIVAS VISUALES CON INTERACTIVIDAD REACCIONANTE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
         
-        {/* DISTRIBUCIÓN POR AGRUPACIÓN CON CONTEO DE PRODUCTOS Y SELECCIÓN HACIENDO CLICK (7 COLS) */}
-        <div className="lg:col-span-7 bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl space-y-5">
-          <div className="border-b border-slate-700/60 pb-3 flex justify-between items-center">
+        {/* DISTRIBUCIÓN POR AGRUPACIÓN (7 COLS) */}
+        <div className="lg:col-span-7 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-5">
+          <div className="border-b border-gray-100 pb-3 flex justify-between items-center">
             <div>
-              <h2 className="text-base font-satoshi-black text-white uppercase tracking-wider">
+              <h2 className="text-base font-satoshi-black text-gray-900 uppercase tracking-wider">
                 Distribución por {agruparPor === 'SEDES' ? 'Sedes' : agruparPor === 'CANALES' ? 'Canales' : 'Vendedores'}
               </h2>
-              <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
+              <p className="text-xs text-gray-500 font-satoshi-regular">
                 Haz clic en una opción para filtrar el Ranking de Top Productos en tiempo real.
               </p>
             </div>
 
-            <div className="bg-[#1D2935] p-1 rounded-xl flex items-center gap-1 border border-slate-700/60 shrink-0">
+            <div className="bg-gray-100 p-1 rounded-xl flex items-center gap-1 border border-gray-200 shrink-0">
               <button
                 type="button"
                 onClick={() => setAgruparPor('SEDES')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
                   agruparPor === 'SEDES'
-                    ? 'bg-[#0DE8C0] text-[#1D2935]'
-                    : 'text-[#A0AEC0] hover:text-white'
+                    ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900'
                 }`}
               >
                 Sedes
@@ -569,8 +566,8 @@ export default function ReportesPage() {
                 onClick={() => setAgruparPor('CANALES')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
                   agruparPor === 'CANALES'
-                    ? 'bg-[#0DE8C0] text-[#1D2935]'
-                    : 'text-[#A0AEC0] hover:text-white'
+                    ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900'
                 }`}
               >
                 Canales
@@ -581,8 +578,8 @@ export default function ReportesPage() {
                 onClick={() => setAgruparPor('VENDEDORES')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
                   agruparPor === 'VENDEDORES'
-                    ? 'bg-[#0DE8C0] text-[#1D2935]'
-                    : 'text-[#A0AEC0] hover:text-white'
+                    ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm'
+                    : 'text-gray-500 hover:text-gray-900'
                 }`}
               >
                 Vendedores
@@ -600,30 +597,30 @@ export default function ReportesPage() {
                   onClick={() => setSeleccionFiltroTop(isSelected ? null : item.nombre)}
                   className={`p-3 rounded-xl border transition-all cursor-pointer select-none space-y-2 ${
                     isSelected 
-                      ? 'bg-[#1D2935] border-[#0DE8C0] shadow-md shadow-[#0DE8C0]/10' 
-                      : 'bg-[#1D2935]/60 hover:bg-[#1D2935] border-slate-700/60'
+                      ? 'bg-gray-100 border-[#FFD800] shadow-sm' 
+                      : 'bg-gray-50 hover:bg-gray-100/80 border-gray-200'
                   }`}
                 >
                   <div className="flex justify-between items-center text-xs">
                     <div className="flex items-center gap-2 truncate">
-                      <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-[#0DE8C0] animate-pulse' : 'bg-slate-500'}`} />
-                      <span className="font-satoshi-black text-white truncate">{item.nombre}</span>
-                      <span className="text-[10px] text-[#A0AEC0] bg-[#253443] px-2 py-0.5 rounded-md border border-slate-700 font-mono">
+                      <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-[#FFD800] border border-gray-900 animate-pulse' : 'bg-gray-400'}`} />
+                      <span className="font-satoshi-black text-gray-900 truncate">{item.nombre}</span>
+                      <span className="text-[10px] text-gray-500 bg-white px-2 py-0.5 rounded-md border border-gray-200 font-mono">
                         {item.unidades} productos ({item.ordenes} ops)
                       </span>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-satoshi-black text-[#0DE8C0]">{formatoCOP(item.monto)}</span>
-                      <span className="text-[11px] font-mono text-[#0DE8C0] bg-[#253443] px-1.5 py-0.5 rounded border border-slate-700">
+                      <span className="font-satoshi-black text-gray-900">{formatoCOP(item.monto)}</span>
+                      <span className="text-[11px] font-mono text-gray-800 bg-white px-1.5 py-0.5 rounded border border-gray-200">
                         {item.porcentaje}%
                       </span>
                     </div>
                   </div>
 
-                  <div className="w-full h-2.5 bg-[#253443] rounded-full overflow-hidden p-0.5 border border-slate-700/40">
+                  <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden p-0.5 border border-gray-200">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#C81FDA] to-[#0DE8C0] transition-all duration-500"
+                      className="h-full rounded-full bg-[#FFD800] transition-all duration-500"
                       style={{ width: `${Math.max(item.porcentaje, 4)}%` }}
                     ></div>
                   </div>
@@ -632,21 +629,21 @@ export default function ReportesPage() {
             })}
 
             {agrupacionData.length === 0 && (
-              <div className="text-center py-12 text-[#A0AEC0] text-xs font-satoshi-regular">
+              <div className="text-center py-12 text-gray-500 text-xs font-satoshi-regular">
                 No se registraron ventas entregadas en {mesesDelAnio[mesFiltro].nombre} de {anioFiltro}.
               </div>
             )}
           </div>
         </div>
 
-        {/* RANKING TOP PRODUCTOS MÁS VENDIDOS REACCIÓN AL FILTRO INTERACTIVO (5 COLS) */}
-        <div className="lg:col-span-5 bg-[#253443] border border-slate-700/50 rounded-2xl p-6 shadow-xl space-y-5">
-          <div className="border-b border-slate-700/60 pb-3 flex justify-between items-center">
+        {/* RANKING TOP PRODUCTOS (5 COLS) */}
+        <div className="lg:col-span-5 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-5">
+          <div className="border-b border-gray-100 pb-3 flex justify-between items-center">
             <div>
-              <h2 className="text-base font-satoshi-black text-white uppercase tracking-wider">
+              <h2 className="text-base font-satoshi-black text-gray-900 uppercase tracking-wider">
                 Top Productos
               </h2>
-              <p className="text-xs text-[#A0AEC0] font-satoshi-regular">
+              <p className="text-xs text-gray-500 font-satoshi-regular">
                 {seleccionFiltroTop 
                   ? `Filtrado por: "${seleccionFiltroTop}"`
                   : 'Ranking general de unidades vendidas'}
@@ -657,7 +654,7 @@ export default function ReportesPage() {
               <button
                 type="button"
                 onClick={() => setSeleccionFiltroTop(null)}
-                className="text-[10px] font-satoshi-black text-[#0DE8C0] hover:underline bg-[#1D2935] px-2 py-1 rounded-lg border border-[#0DE8C0]/30"
+                className="text-[10px] font-satoshi-black text-gray-900 hover:underline bg-gray-100 px-2 py-1 rounded-lg border border-gray-300"
               >
                 ✕ Ver Todos
               </button>
@@ -668,27 +665,27 @@ export default function ReportesPage() {
             {topProductos.map((prod, idx) => (
               <div
                 key={prod.sku || idx}
-                className="bg-[#1D2935] border border-slate-700/60 rounded-xl p-3 flex items-center justify-between gap-3 shadow-md"
+                className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between gap-3 shadow-xs"
               >
                 <div className="flex items-center gap-3 truncate">
-                  <span className="w-7 h-7 rounded-lg bg-[#253443] border border-slate-700 text-[#0DE8C0] font-satoshi-black text-xs flex items-center justify-center shrink-0">
+                  <span className="w-7 h-7 rounded-lg bg-[#222222] text-[#FFD800] font-satoshi-black text-xs flex items-center justify-center shrink-0">
                     #{idx + 1}
                   </span>
                   <div className="truncate">
-                    <h3 className="font-satoshi-black text-xs text-white uppercase truncate">
+                    <h3 className="font-satoshi-black text-xs text-gray-900 uppercase truncate">
                       {prod.nombre}
                     </h3>
-                    <span className="font-mono text-[10px] text-slate-400">
+                    <span className="font-mono text-[10px] text-gray-500">
                       SKU/Ref: {prod.sku}
                     </span>
                   </div>
                 </div>
 
                 <div className="text-right shrink-0">
-                  <span className="block font-satoshi-black text-xs text-[#0DE8C0]">
+                  <span className="block font-satoshi-black text-xs text-gray-900 font-bold">
                     {prod.cantidad} unds
                   </span>
-                  <span className="block font-satoshi-regular text-[10px] text-slate-300">
+                  <span className="block font-satoshi-regular text-[10px] text-gray-500">
                     {formatoCOP(prod.totalMonto)}
                   </span>
                 </div>
@@ -696,7 +693,7 @@ export default function ReportesPage() {
             ))}
 
             {topProductos.length === 0 && (
-              <div className="text-center py-12 text-[#A0AEC0] text-xs font-satoshi-regular">
+              <div className="text-center py-12 text-gray-500 text-xs font-satoshi-regular">
                 {seleccionFiltroTop 
                   ? `Sin productos registrados para "${seleccionFiltroTop}".`
                   : 'Sin productos en el ranking de ventas entregadas.'}
