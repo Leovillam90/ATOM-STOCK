@@ -25,6 +25,10 @@ export default function ProductosPage() {
   const [filtroStockRotacion, setFiltroStockRotacion] = useState<'TODOS' | 'BAJO_STOCK' | 'INTERMEDIO' | 'INACTIVO_60' | 'INACTIVO_90' | 'INACTIVO_120'>('TODOS');
   const [bodegaFiltro, setBodegaFiltro] = useState<string>('TODAS');
 
+  // Menu desplegable de Exportación
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
   // Modal Crear / Editar Producto Manual
   const [showModal, setShowModal] = useState(false);
   const [editingSku, setEditingSku] = useState<string | null>(null);
@@ -32,10 +36,11 @@ export default function ProductosPage() {
   const [nombre, setNombre] = useState('');
   const [categoria, setCategoria] = useState('TECNOLOGIA');
   
-  // TRES NIVELES DE PRECIOS
+  // NIVELES DE PRECIOS
   const [pmayor, setPmayor] = useState<number | ''>('');
   const [plocal, setPlocal] = useState<number | ''>('');
   const [pecom, setPecom] = useState<number | ''>('');
+  const [pdroko, setPdroko] = useState<number | ''>('');
 
   // CONFIGURACIÓN DE IVA EN EL PRODUCTO
   const [aplicaIva, setAplicaIva] = useState<boolean>(true);
@@ -90,6 +95,17 @@ export default function ProductosPage() {
       unsubVent();
     };
   }, [userAuth]);
+
+  // Cerrar desplegable de exportar al dar click fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const esAdmin = userAuth?.rol === 'ADMIN';
 
@@ -233,6 +249,7 @@ export default function ProductosPage() {
     setPmayor('');
     setPlocal('');
     setPecom('');
+    setPdroko('');
     setAplicaIva(true);
     setTarifaIva(19);
     setCostoImportacion('');
@@ -261,6 +278,7 @@ export default function ProductosPage() {
     setPmayor(p.pmayor !== undefined ? p.pmayor : '');
     setPlocal(p.plocal !== undefined ? p.plocal : (p.precio !== undefined ? p.precio : ''));
     setPecom(p.pecom !== undefined ? p.pecom : '');
+    setPdroko(p.pdroko !== undefined ? p.pdroko : '');
 
     setAplicaIva(p.aplica_iva !== undefined ? p.aplica_iva : true);
     setTarifaIva(p.iva !== undefined ? Number(p.iva) : 19);
@@ -296,17 +314,16 @@ export default function ProductosPage() {
   };
 
   // ==========================================
-  // EXPORTAR TODO EL INVENTARIO A CSV (SOLO ADMIN)
+  // EXPORTACIÓN 1: TODO EL INVENTARIO GENERAL (CSV)
   // ==========================================
-  const handleExportarInventario = () => {
+  const handleExportarInventarioGeneral = () => {
     if (productos.length === 0) {
       return alert('No hay productos en el inventario para exportar.');
     }
 
     const bom = '\uFEFF';
     let csvContent = 'SEP=;\n';
-    // Definimos los encabezados del CSV
-    csvContent += 'SKU;NOMBRE_PRODUCTO;CATEGORIA;PRECIO_AL_POR_MAYOR;PRECIO_TIENDA_FISICA;PRECIO_ECOMMERCE;IVA_INCLUIDO;TARIFA_IVA;COSTO_IMPORTACION_FABRICACION;COSTO_FULFILMENT;STOCK_TOTAL_EMPRESA\n';
+    csvContent += 'SKU;NOMBRE_PRODUCTO;CATEGORIA;PRECIO_AL_POR_MAYOR;PRECIO_TIENDA_FISICA;PRECIO_ECOMMERCE;PRECIO_DROKO;IVA_INCLUIDO;TARIFA_IVA;COSTO_IMPORTACION_FABRICACION;COSTO_FULFILMENT;STOCK_TOTAL_EMPRESA\n';
 
     productos.forEach(p => {
       const fSku = p.sku || 'N/A';
@@ -315,13 +332,14 @@ export default function ProductosPage() {
       const fPMayor = p.pmayor || 0;
       const fPLocal = p.plocal || p.precio || 0;
       const fPEcom = p.pecom || 0;
+      const fPDroko = p.pdroko || 0;
       const fIvaIncluido = p.aplica_iva ? 'SI' : 'NO';
       const fTarifaIva = p.iva || 0;
       const fCostoImp = p.costo_importacion || 0;
       const fCostoFul = p.costo_fulfilment || 0;
       const fStockTotal = obtenerStockTotalProducto(p, 'TODAS');
 
-      csvContent += `${fSku};${fNombre};${fCat};${fPMayor};${fPLocal};${fPEcom};${fIvaIncluido};${fTarifaIva};${fCostoImp};${fCostoFul};${fStockTotal}\n`;
+      csvContent += `${fSku};${fNombre};${fCat};${fPMayor};${fPLocal};${fPEcom};${fPDroko};${fIvaIncluido};${fTarifaIva};${fCostoImp};${fCostoFul};${fStockTotal}\n`;
     });
 
     const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -329,9 +347,78 @@ export default function ProductosPage() {
     const link = document.createElement('a');
     link.href = url;
     
-    // Nombre del archivo con la fecha actual
     const fechaDescarga = new Date().toISOString().split('T')[0];
-    link.setAttribute('download', `Inventario_LoboStock_${fechaDescarga}.csv`);
+    link.setAttribute('download', `Inventario_General_LoboStock_${fechaDescarga}.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // ==========================================
+  // EXPORTACIÓN 2: FORMATO DROKO / PACKING LIST (CSV)
+  // ==========================================
+  const handleExportarInventarioDroko = () => {
+    if (productos.length === 0) {
+      return alert('No hay productos en el inventario para exportar.');
+    }
+
+    // Identificar cuál de las sucursales es la "Bodega DROKO"
+    const bodegaDroko = sucursales.find(s => 
+      s.tipo_sucursal === 'BODEGA' && String(s.nombre).toUpperCase().includes('DROKO')
+    );
+
+    if (!bodegaDroko) {
+      return alert('Error: No tienes una sede tipo "BODEGA" configurada para "DROKO". Por favor ve al menú de Sucursales y asegúrate de crear la Bodega Droko.');
+    }
+
+    // Solicitar al usuario la TRM para la conversión a Dólares (USD)
+    const tasaCambio = prompt('Ingresa la Tasa de Cambio Representativa (TRM) actual para convertir tus precios COP a USD.\nEjemplo: 4050');
+    
+    if (!tasaCambio) return; // Si el usuario cancela, detenemos la exportación
+    
+    const trmNumerica = parseMontoPuro(tasaCambio);
+    if (trmNumerica <= 0) return alert('La TRM ingresada no es válida.');
+
+    const bom = '\uFEFF';
+    let csvContent = 'SEP=;\n';
+    csvContent += 'Producto;SKU;Unidad;Cantidad total;Precio unitario (USD);Precio venta (USD)\n';
+
+    let prodsExportados = 0;
+
+    productos.forEach(p => {
+      // Regla 1: Solo tomar el stock que está dentro de la Bodega Droko encontrada.
+      const fStockDroko = Number(p.stock?.[bodegaDroko.id_sucursal] || 0);
+
+      // Regla 2: Solo exportar los que realmente tienen inventario en esa bodega
+      if (fStockDroko > 0) {
+        const fNombre = (p.nombre || 'Sin nombre').replace(/;/g, ' ');
+        const fSku = p.sku || 'N/A';
+        const fUnidad = p.unidad_empaque || 'Unidad';
+        
+        // Conversión a USD según la TRM ingresada (Redondeado a 2 decimales para precisión)
+        const costoUnitarioCop = p.costo_importacion || 0;
+        const precioVentaCop = p.pdroko || p.pecom || p.plocal || p.precio || 0;
+
+        const fPrecioUnitarioUsd = (costoUnitarioCop / trmNumerica).toFixed(2);
+        const fPrecioVentaUsd = (precioVentaCop / trmNumerica).toFixed(2);
+
+        csvContent += `${fNombre};${fSku};${fUnidad};${fStockDroko};${fPrecioUnitarioUsd};${fPrecioVentaUsd}\n`;
+        prodsExportados++;
+      }
+    });
+
+    if (prodsExportados === 0) {
+      return alert(`La Bodega DROKO (${bodegaDroko.nombre}) actualmente no tiene inventario asignado de ningún producto. Mueve stock a esa bodega antes de exportar.`);
+    }
+
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    const fechaDescarga = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `PackingList_Droko_${fechaDescarga}.csv`);
     
     document.body.appendChild(link);
     link.click();
@@ -359,7 +446,7 @@ export default function ProductosPage() {
     setLoading(true);
     try {
       const fechaActualISO = new Date().toISOString();
-      const precioDefinido = Number(plocal) || Number(pecom) || Number(pmayor) || 0;
+      const precioDefinido = Number(plocal) || Number(pecom) || Number(pmayor) || Number(pdroko) || 0;
       const tarifaAplicada = aplicaIva ? Number(tarifaIva) : 0;
       const { base, iva } = calcularBaseEIVA(precioDefinido, tarifaAplicada, aplicaIva);
 
@@ -373,6 +460,7 @@ export default function ProductosPage() {
         precio_mayor: Number(pmayor) || 0,
         precio_pos: Number(plocal) || 0,
         precio_ecom: Number(pecom) || 0,
+        precio_droko: Number(pdroko) || 0,
         costo_importacion: Number(costoImportacion) || 0,
         costo_fulfilment: Number(costoFulfilment) || 0,
         iva_porcentaje: tarifaAplicada
@@ -398,6 +486,7 @@ export default function ProductosPage() {
         pmayor: Number(pmayor) || 0,
         plocal: Number(plocal) || 0,
         pecom: Number(pecom) || 0,
+        pdroko: Number(pdroko) || 0, // GUARDAR PRECIO DROKO
         precio: precioDefinido,
 
         aplica_iva: aplicaIva,
@@ -444,10 +533,10 @@ export default function ProductosPage() {
     const bom = '\uFEFF';
     const csvContent = 
       'SEP=;\n' +
-      'sku;nombre;categoria;precio_al_por_mayor;precio_tienda_fisica;precio_ecommerce;iva_incluido;iva_porcentaje;costo_importacion_o_fabricacion;costo_fulfilment;stock_total;sede\n' +
-      'PROD-101;Juego de Cubiertos 24pz;HOGAR;85000;129000;119000;SI;19;45000;8000;50;Sede Principal\n' +
-      'PROD-102;Termo Digital Temperatura;TECNOLOGIA;38000;64990;59900;SI;19;18000;5000;30;Bodega Norte\n' +
-      'PROD-103;Arroz Especial 1kg;ALIMENTOS;3500;4500;4200;NO;0;2000;500;100;Sede Principal\n';
+      'sku;nombre;categoria;precio_al_por_mayor;precio_tienda_fisica;precio_ecommerce;precio_droko;iva_incluido;iva_porcentaje;costo_importacion_o_fabricacion;costo_fulfilment;stock_total;sede\n' +
+      'PROD-101;Juego de Cubiertos 24pz;HOGAR;85000;129000;119000;115000;SI;19;45000;8000;50;Sede Principal\n' +
+      'PROD-102;Termo Digital Temperatura;TECNOLOGIA;38000;64990;59900;55000;SI;19;18000;5000;30;Bodega Norte\n' +
+      'PROD-103;Arroz Especial 1kg;ALIMENTOS;3500;4500;4200;4000;NO;0;2000;500;100;Sede Principal\n';
 
     const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -495,6 +584,7 @@ export default function ProductosPage() {
         const idxPMayor = headers.indexOf('precio_al_por_mayor');
         const idxPPos = headers.indexOf('precio_tienda_fisica');
         const idxPEcom = headers.indexOf('precio_ecommerce');
+        const idxPDroko = headers.indexOf('precio_droko'); // CARGA MASIVA DROKO
         const idxIvaInclu = headers.indexOf('iva_incluido');
         const idxTarifaIva = headers.indexOf('iva_porcentaje');
         const idxCostoImp = headers.indexOf('costo_importacion_o_fabricacion');
@@ -525,6 +615,7 @@ export default function ProductosPage() {
             const precioMayor = idxPMayor !== -1 ? parseMontoPuro(cols[idxPMayor]) : 0;
             const precioFisica = parseMontoPuro(cols[idxPPos]) || precioMayor;
             const precioEcom = idxPEcom !== -1 ? (parseMontoPuro(cols[idxPEcom]) || precioFisica) : precioFisica;
+            const precioDroko = idxPDroko !== -1 ? (parseMontoPuro(cols[idxPDroko]) || precioFisica) : precioFisica;
 
             const ivaIncluText = idxIvaInclu !== -1 ? (cols[idxIvaInclu] || 'SI').toUpperCase() : 'SI';
             const aplicaIvaBool = ivaIncluText === 'SI' || ivaIncluText === '1' || ivaIncluText === 'TRUE';
@@ -557,6 +648,7 @@ export default function ProductosPage() {
               pmayor: precioMayor,
               plocal: precioFisica,
               pecom: precioEcom,
+              pdroko: precioDroko,
               precio: precioFisica,
               aplica_iva: aplicaIvaBool,
               iva: tarifaIvaNum,
@@ -630,7 +722,7 @@ export default function ProductosPage() {
   };
 
   const sedesFormulario = obtenerSedesAutorizadasUsuario();
-  const precioReferenciaForm = Number(plocal) || Number(pecom) || Number(pmayor) || 0;
+  const precioReferenciaForm = Number(plocal) || Number(pecom) || Number(pmayor) || Number(pdroko) || 0;
   const tarifaCalculoForm = aplicaIva ? Number(tarifaIva) : 0;
   const desgloseForm = calcularBaseEIVA(precioReferenciaForm, tarifaCalculoForm, aplicaIva);
 
@@ -656,18 +748,50 @@ export default function ProductosPage() {
 
         <div className="flex items-center flex-wrap gap-3 shrink-0">
           
-          {/* BOTÓN EXPORTAR SOLO PARA ADMIN */}
+          {/* BOTÓN DESPLEGABLE DE EXPORTACIÓN SOLO PARA ADMIN */}
           {esAdmin && (
-            <button
-              type="button"
-              onClick={handleExportarInventario}
-              className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-satoshi-black px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 flex items-center gap-2 font-bold shadow-sm"
-            >
-              <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>Exportar (CSV)</span>
-            </button>
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-satoshi-black px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 flex items-center gap-2 font-bold shadow-sm"
+              >
+                <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Exportar (CSV)</span>
+                <svg className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* MENÚ DESPLEGABLE */}
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-2 w-60 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleExportarInventarioGeneral();
+                      setShowExportMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 text-gray-800 font-satoshi-black font-bold flex items-center gap-2 border-b border-gray-100 transition"
+                  >
+                    <span>Exportar General (Todo)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleExportarInventarioDroko();
+                      setShowExportMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 text-gray-800 font-satoshi-black font-bold flex items-center gap-2 transition"
+                  >
+                    <span>Exportar Droko (Packing List)</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           <button
@@ -1312,7 +1436,7 @@ export default function ProductosPage() {
                     <span>Estructura de Precios Finales (Cliente)</span>
                   </label>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div>
                       <label className="block text-[10px] font-satoshi-black text-gray-700 mb-1 uppercase font-bold">Por Mayor ($)</label>
                       <input 
@@ -1345,6 +1469,19 @@ export default function ProductosPage() {
                         onChange={(e) => setPecom(e.target.value ? Number(e.target.value) : '')}
                       />
                     </div>
+
+                    {sucursales.some(s => s.tipo_sucursal === 'BODEGA' && String(s.nombre).toUpperCase().includes('DROKO')) && (
+                      <div>
+                        <label className="block text-[10px] font-satoshi-black text-gray-700 mb-1 uppercase font-bold text-amber-800">Droko ($) *</label>
+                        <input 
+                          type="number"
+                          className="w-full bg-amber-50 border border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-lg p-2.5 text-xs text-gray-900 font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all"
+                          placeholder="115000"
+                          value={pdroko}
+                          onChange={(e) => setPdroko(e.target.value ? Number(e.target.value) : '')}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
