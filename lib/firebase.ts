@@ -12,9 +12,11 @@ const firebaseConfig = {
   measurementId: "G-551LSKH755"
 };
 
+// Inicializa Firebase solo si no se ha inicializado antes (evita errores en Next.js)
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
+// Exportamos los servicios que usaremos en toda la app
 export const db = getFirestore(app);
-export const auth = getAuth(app);
+export const auth = getAuth(app); // <-- ¡La bóveda de seguridad activada!
 
 export default app;
