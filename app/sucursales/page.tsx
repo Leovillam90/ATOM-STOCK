@@ -58,6 +58,9 @@ export default function SucursalesPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Validaciones de Permisos y Roles
+  const esAdmin = userAuth?.rol === 'ADMIN';
+
   // Formateador estandarizado de teléfono (+57 XXX XXX XXXX)
   const formatTelefono = (tel: string) => {
     if (!tel) return 'Sin teléfono';
@@ -133,7 +136,6 @@ export default function SucursalesPage() {
         setLoading(false);
       }
     } else {
-      // Si no hay bodegas previas, abrimos el modal para que llene los datos
       setEditingId(null);
       setNombre('Bodega DROKO');
       setTipoSucursal('BODEGA');
@@ -180,9 +182,15 @@ export default function SucursalesPage() {
     }
   };
 
+  // 🛡️ ELIMINAR REGISTRO (RESTRINGIDO EXCLUSIVAMENTE A ADMINISTRADOR)
   const handleDelete = async (e: React.MouseEvent, s: any) => {
     e.stopPropagation();
     setOpenMenuId(null);
+
+    if (!esAdmin) {
+      return alert('Acceso denegado: Solo el usuario Administrador tiene permisos para eliminar sedes del sistema.');
+    }
+
     if (!confirm(`¿Estás seguro de eliminar la sede ${s.nombre}? Esta acción no se puede deshacer.`)) return;
 
     try {
@@ -456,16 +464,20 @@ export default function SucursalesPage() {
                           </svg>
                           <span>Editar</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDelete(e, s)}
-                          className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 font-satoshi-regular flex items-center gap-2 border-t border-gray-100"
-                        >
-                          <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          <span>Eliminar</span>
-                        </button>
+
+                        {/* 🛡️ RESTRINGIDO: SOLO VISIBLE SI ES ADMINISTRADOR */}
+                        {esAdmin && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDelete(e, s)}
+                            className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 font-satoshi-regular flex items-center gap-2 border-t border-gray-100"
+                          >
+                            <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>Eliminar</span>
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -542,7 +554,7 @@ export default function SucursalesPage() {
                 >
                   <span>Ver Detalle</span>
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7-7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
               </div>
