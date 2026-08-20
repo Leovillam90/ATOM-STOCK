@@ -14,7 +14,7 @@ export default function CalculadoraPage() {
   // ==========================================
   const [simCanal, setSimCanal] = useState<'POS' | 'MAYOR' | 'DROKO'>('DROKO');
   const [simCogs, setSimCogs] = useState<number>(45000); // Costo Producto
-  const [simOps, setSimOps] = useState<number>(8000);   // Picking / Operación
+  const [simOps, setSimOps] = useState<number>(8000);   // Picking / Operación (Solo Droko)
   const [simOtros, setSimOtros] = useState<number>(2000); // Otros Gastos
   const [simMargenDeseado, setSimMargenDeseado] = useState<number>(25); // Margen Neto %
   const [simDevRate, setSimDevRate] = useState<number>(18); // % Devolución Logística
@@ -60,17 +60,20 @@ export default function CalculadoraPage() {
       setSimLossRate(2);
       setSimPlatFee(1.5);
       setSimMargenDeseado(30);
+      setSimOps(0);
     } else if (simCanal === 'MAYOR') {
       setSimDevRate(1);
       setSimLossRate(1);
       setSimPlatFee(0);
       setSimMargenDeseado(15);
+      setSimOps(0);
     } else {
-      // DROKO / E-COMMERCE
+      // DROKO
       setSimDevRate(18);
       setSimLossRate(5);
       setSimPlatFee(3.5);
       setSimMargenDeseado(25);
+      setSimOps(8000);
     }
   }, [simCanal]);
 
@@ -79,7 +82,8 @@ export default function CalculadoraPage() {
   // ==========================================
   const calculoSimulador = useMemo(() => {
     const cogs = Number(simCogs) || 0;
-    const ops = Number(simOps) || 0;
+    // Solo aplica picking / empaque cuando el canal es DROKO
+    const ops = simCanal === 'DROKO' ? (Number(simOps) || 0) : 0;
     const otros = Number(simOtros) || 0;
     const mTarget = (Number(simMargenDeseado) || 0) / 100;
     const devPct = (Number(simDevRate) || 0) / 100;
@@ -113,7 +117,7 @@ export default function CalculadoraPage() {
       utilidadNeta,
       factorBlindaje
     };
-  }, [simCogs, simOps, simOtros, simMargenDeseado, simDevRate, simLossRate, simPlatFee]);
+  }, [simCogs, simOps, simOtros, simMargenDeseado, simDevRate, simLossRate, simPlatFee, simCanal]);
 
   // ==========================================
   // 🔍 DIAGNÓSTICO FINANCIERO MASIVO (FIREBASE)
@@ -139,7 +143,7 @@ export default function CalculadoraPage() {
 
     const listaAnalizada = productos.map(p => {
       const cogs = Number(p.costo_importacion) || 0;
-      const ops = Number(p.costo_fulfilment) || 0;
+      const ops = auditCanal === 'DROKO' ? (Number(p.costo_fulfilment) || 0) : 0;
       const costoDirecto = cogs + ops;
 
       const provFuga = ((ops * 2) * devPct) + ((cogs + ops) * lossPct);
@@ -227,8 +231,34 @@ export default function CalculadoraPage() {
     }
   };
 
+  // ==========================================
+  // EXPORTAR SIMULACIÓN COMO IMAGEN (PNG)
+  // ==========================================
+  const handleExportarImagen = () => {
+    const area = document.getElementById('area-blindaje-completa');
+    if (!area) return;
+
+    const capture = () => {
+      (window as any).html2canvas(area, { scale: 2, backgroundColor: '#F4F5F7' }).then((canvas: HTMLCanvasElement) => {
+        const link = document.createElement('a');
+        link.download = `Analisis_Blindaje_LoboStock_${new Date().toISOString().split('T')[0]}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
+    };
+
+    if (!(window as any).html2canvas) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script.onload = () => capture();
+      document.body.appendChild(script);
+    } else {
+      capture();
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#F4F5F7] text-gray-800 p-6 md:p-10 font-sans relative pb-20">
+    <div id="area-blindaje-completa" className="min-h-screen bg-[#F4F5F7] text-gray-800 p-6 md:p-10 font-sans relative pb-20">
       
       {/* CABECERA PRINCIPAL */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-gray-200 pb-6">
@@ -245,6 +275,31 @@ export default function CalculadoraPage() {
           <p className="text-xs text-gray-500 mt-1 font-satoshi-regular max-w-2xl">
             Calcula precios de venta reales absorbiendo comisiones de pasarela, costos de logística inversa y mermas operativas para proteger la utilidad neta de tu empresa.
           </p>
+        </div>
+
+        {/* BOTONES DE DESCARGA E IMPRESIÓN */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleExportarImagen}
+            className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-800 font-satoshi-black px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-2 font-bold"
+          >
+            <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span>Descargar Imagen</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="bg-[#FFD800] hover:bg-[#FDCB13] text-[#222222] font-satoshi-black px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-2 font-bold"
+          >
+            <svg className="w-4 h-4 text-[#222222]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            <span>PDF / Imprimir</span>
+          </button>
         </div>
       </div>
 
@@ -291,9 +346,9 @@ export default function CalculadoraPage() {
               </div>
             </div>
 
-            {/* INPUTS DEL SIMULADOR */}
+            {/* INPUTS DEL SIMULADOR (SIN FLECHITAS SPINNER) */}
             <div className="space-y-4 text-xs font-satoshi-regular">
-              <div className="grid grid-cols-2 gap-3">
+              <div className={`grid gap-3 ${simCanal === 'DROKO' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <div>
                   <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Costo Producto (COP)</label>
                   <input
@@ -301,19 +356,23 @@ export default function CalculadoraPage() {
                     min="0"
                     value={simCogs}
                     onChange={(e) => setSimCogs(Number(e.target.value))}
-                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-xl p-2.5 font-mono text-white focus:border-[#FFD800] focus:outline-none"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-xl p-2.5 font-mono text-white focus:border-[#FFD800] focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Picking / Empaque (COP)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={simOps}
-                    onChange={(e) => setSimOps(Number(e.target.value))}
-                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-xl p-2.5 font-mono text-white focus:border-[#FFD800] focus:outline-none"
-                  />
-                </div>
+
+                {/* PICKING Y EMPAQUE SOLO APARECE CUANDO EL CANAL ES DROKO */}
+                {simCanal === 'DROKO' && (
+                  <div>
+                    <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Picking / Empaque (COP)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={simOps}
+                      onChange={(e) => setSimOps(Number(e.target.value))}
+                      className="w-full bg-[#1A1A1A] border border-gray-700 rounded-xl p-2.5 font-mono text-white focus:border-[#FFD800] focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -324,7 +383,7 @@ export default function CalculadoraPage() {
                     min="0"
                     value={simOtros}
                     onChange={(e) => setSimOtros(Number(e.target.value))}
-                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-xl p-2.5 font-mono text-white focus:border-[#FFD800] focus:outline-none"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-xl p-2.5 font-mono text-white focus:border-[#FFD800] focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
                 <div>
@@ -335,7 +394,7 @@ export default function CalculadoraPage() {
                     max="80"
                     value={simMargenDeseado}
                     onChange={(e) => setSimMargenDeseado(Number(e.target.value))}
-                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-xl p-2.5 font-mono text-white focus:border-[#FFD800] focus:outline-none text-right font-bold"
+                    className="w-full bg-[#1A1A1A] border border-gray-700 rounded-xl p-2.5 font-mono text-white focus:border-[#FFD800] focus:outline-none text-right font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
               </div>
@@ -399,7 +458,7 @@ export default function CalculadoraPage() {
           <div className="bg-white border-2 border-[#FFD800] rounded-2xl p-6 shadow-sm flex flex-col justify-between space-y-4">
             <div className="text-center space-y-1">
               <span className="text-[10px] font-satoshi-black text-gray-500 uppercase tracking-widest font-bold block">
-                PRECIO SUGERIDO BLINDADO ({simCanal})
+                PRECIO SUGERIDO BLINDADO
               </span>
               <div className="text-4xl font-black text-gray-900 font-satoshi-black">
                 {formatoCOP(calculoSimulador.precioSugerido)}
@@ -505,7 +564,7 @@ export default function CalculadoraPage() {
             <div className="flex justify-between items-center gap-3">
               <input
                 type="text"
-                className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] rounded-xl px-3.5 py-2 text-xs focus:outline-none"
+                className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] rounded-xl px-3.5 py-2 text-xs focus:outline-none font-satoshi-regular"
                 placeholder="Buscar SKU o Producto en auditoría..."
                 value={auditSearch}
                 onChange={(e) => setAuditSearch(e.target.value)}
