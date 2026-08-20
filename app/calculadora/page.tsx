@@ -12,19 +12,30 @@ export default function CalculadoraPage() {
   // ==========================================
   // ESTADOS DEL SIMULADOR UNITARIO
   // ==========================================
-  const [simCanal, setSimCanal] = useState<'POS' | 'MAYOR' | 'DROKO'>('DROKO');
+  const [simCanal, setSimCanal] = useState<'POS' | 'MAYOR' | 'ECOM' | 'DROKO'>('ECOM');
   const [simCogs, setSimCogs] = useState<number>(45000); // Costo Producto
-  const [simOps, setSimOps] = useState<number>(8000);   // Picking / Operación (Solo Droko)
+  const [simOps, setSimOps] = useState<number>(8000);   // Picking / Empaque (Solo E-Com)
   const [simOtros, setSimOtros] = useState<number>(2000); // Otros Gastos
   const [simMargenDeseado, setSimMargenDeseado] = useState<number>(25); // Margen Neto %
-  const [simDevRate, setSimDevRate] = useState<number>(18); // % Devolución Logística
-  const [simLossRate, setSimLossRate] = useState<number>(5);  // % Merma
-  const [simPlatFee, setSimPlatFee] = useState<number>(3);    // % Comisión Pasarela / Plataforma
+  
+  // E-COMMERCE: Factores de Fuga, Vendedor, Volumen e IVA
+  const [simDevRate, setSimDevRate] = useState<number>(18); // % Devolución Logística (Solo E-Com)
+  const [simLossRate, setSimLossRate] = useState<number>(5);  // % Merma (Solo E-Com)
+  const [simBonifVendedor, setSimBonifVendedor] = useState<number>(0); // % Bonificación Vendedor (Solo E-Com)
+  const [simCantidadEcom, setSimCantidadEcom] = useState<number>(100); // Cantidad proyectada E-Com
+  const [simAplicaIvaEcom, setSimAplicaIvaEcom] = useState<boolean>(false); // ¿Aplica IVA en E-Com?
+  const [simTarifaIvaEcom, setSimTarifaIvaEcom] = useState<number>(19); // Tarifa IVA % E-Com
+
+  // DROKO: Cantidad, Comisión 1% e IVA Opcional
+  const [simPlatFee, setSimPlatFee] = useState<number>(1);    // % Comisión Plataforma Droko (Por defecto 1%)
+  const [simCantidadDroko, setSimCantidadDroko] = useState<number>(100); // Cantidad proyectada Droko
+  const [simAplicaIvaDroko, setSimAplicaIvaDroko] = useState<boolean>(false); // ¿Aplica IVA en Droko?
+  const [simTarifaIvaDroko, setSimTarifaIvaDroko] = useState<number>(19); // Tarifa IVA % Droko
 
   // ==========================================
   // ESTADOS DE AUDITORÍA DE CATÁLOGO
   // ==========================================
-  const [auditCanal, setAuditCanal] = useState<'POS' | 'MAYOR' | 'DROKO'>('DROKO');
+  const [auditCanal, setAuditCanal] = useState<'POS' | 'MAYOR' | 'ECOM' | 'DROKO'>('ECOM');
   const [auditSearch, setAuditSearch] = useState('');
   const [auditFiltroSalud, setAuditFiltroSalud] = useState<'TODOS' | 'SALUDABLE' | 'ALERTA' | 'PERDIDA'>('TODOS');
   const [updatingSku, setUpdatingSku] = useState<string | null>(null);
@@ -53,27 +64,37 @@ export default function CalculadoraPage() {
     };
   }, [userAuth]);
 
-  // Autoconfigurar parámetros del simulador según el canal seleccionado
+  // Autoconfigurar parámetros según el canal seleccionado
   useEffect(() => {
     if (simCanal === 'POS') {
       setSimDevRate(0);
-      setSimLossRate(2);
-      setSimPlatFee(1.5);
+      setSimLossRate(0);
+      setSimPlatFee(0);
+      setSimBonifVendedor(0);
       setSimMargenDeseado(30);
       setSimOps(0);
     } else if (simCanal === 'MAYOR') {
-      setSimDevRate(1);
-      setSimLossRate(1);
+      setSimDevRate(0);
+      setSimLossRate(0);
       setSimPlatFee(0);
+      setSimBonifVendedor(0);
       setSimMargenDeseado(15);
       setSimOps(0);
-    } else {
-      // DROKO
+    } else if (simCanal === 'ECOM') {
       setSimDevRate(18);
       setSimLossRate(5);
-      setSimPlatFee(3.5);
+      setSimPlatFee(0);
+      setSimBonifVendedor(0);
       setSimMargenDeseado(25);
       setSimOps(8000);
+    } else {
+      // DROKO
+      setSimDevRate(0);
+      setSimLossRate(0);
+      setSimPlatFee(1);
+      setSimBonifVendedor(0);
+      setSimMargenDeseado(20);
+      setSimOps(0);
     }
   }, [simCanal]);
 
@@ -82,42 +103,83 @@ export default function CalculadoraPage() {
   // ==========================================
   const calculoSimulador = useMemo(() => {
     const cogs = Number(simCogs) || 0;
-    // Solo aplica picking / empaque cuando el canal es DROKO
-    const ops = simCanal === 'DROKO' ? (Number(simOps) || 0) : 0;
+    const ops = simCanal === 'ECOM' ? (Number(simOps) || 0) : 0;
     const otros = Number(simOtros) || 0;
     const mTarget = (Number(simMargenDeseado) || 0) / 100;
-    const devPct = (Number(simDevRate) || 0) / 100;
-    const lossPct = (Number(simLossRate) || 0) / 100;
-    const feePct = (Number(simPlatFee) || 0) / 100;
 
-    const costoDirecto = cogs + ops + otros;
+    // Factores de Fuga & Vendedores (Solo E-Commerce)
+    const devPct = simCanal === 'ECOM' ? ((Number(simDevRate) || 0) / 100) : 0;
+    const lossPct = simCanal === 'ECOM' ? ((Number(simLossRate) || 0) / 100) : 0;
+    const sellerBonusPct = simCanal === 'ECOM' ? ((Number(simBonifVendedor) || 0) / 100) : 0;
+
+    // Comisión Plataforma (Solo Droko)
+    const platFeePct = simCanal === 'DROKO' ? ((Number(simPlatFee) || 0) / 100) : 0;
+
+    const costoDirectoUnit = cogs + ops + otros;
     
-    // Fugas financieras: Costo de flete ida+vuelta en devolución + pérdida por merma
+    // Provisión de fuga por fletes y merma (Solo E-Commerce)
     const provDevolucion = (ops * 2) * devPct;
     const provMerma = (cogs + ops) * lossPct;
     const totalProvisionFuga = provDevolucion + provMerma;
 
-    const costoRealTotal = costoDirecto + totalProvisionFuga;
+    const costoRealUnit = costoDirectoUnit + totalProvisionFuga;
 
-    // Fórmula con Blindaje de Pasarela / Comisión y Margen Neto sobre Venta
-    const denominador = 1 - mTarget - feePct;
-    const precioSugerido = denominador > 0 ? (costoRealTotal / denominador) : (costoRealTotal * 2);
+    // Denominador matemáticamente blindado
+    const denominador = 1 - mTarget - platFeePct - sellerBonusPct;
+    const precioSugeridoUnit = denominador > 0 ? (costoRealUnit / denominador) : (costoRealUnit * 2);
     
-    const comisionMonto = precioSugerido * feePct;
-    const ingresoNeto = precioSugerido - comisionMonto;
-    const utilidadNeta = ingresoNeto - costoRealTotal;
-    const factorBlindaje = costoDirecto > 0 ? (precioSugerido / costoDirecto) : 1;
+    const comisionPlatMonto = precioSugeridoUnit * platFeePct;
+    const bonifVendedorMonto = precioSugeridoUnit * sellerBonusPct;
+
+    // IVA si aplica (Droko o E-Com)
+    const aplicaIvaActual = simCanal === 'DROKO' ? simAplicaIvaDroko : (simCanal === 'ECOM' ? simAplicaIvaEcom : false);
+    const tarifaIvaActual = simCanal === 'DROKO' ? simTarifaIvaDroko : (simCanal === 'ECOM' ? simTarifaIvaEcom : 0);
+    const ivaPct = aplicaIvaActual ? ((Number(tarifaIvaActual) || 0) / 100) : 0;
+    const ivaMontoUnit = precioSugeridoUnit * ivaPct;
+
+    const utilidadNetaUnit = precioSugeridoUnit - comisionPlatMonto - bonifVendedorMonto - costoRealUnit;
+
+    // Proyecciones Masivas por Cantidad
+    let cantidadProyectada = 1;
+    if (simCanal === 'DROKO') cantidadProyectada = Math.max(1, Number(simCantidadDroko) || 1);
+    else if (simCanal === 'ECOM') cantidadProyectada = Math.max(1, Number(simCantidadEcom) || 1);
+
+    const totalVentasProyectadas = precioSugeridoUnit * cantidadProyectada;
+    const totalCostoProducto = cogs * cantidadProyectada;
+    const totalPickingEmpaque = ops * cantidadProyectada;
+    const totalOtrosGastos = otros * cantidadProyectada;
+    const totalProvisionFugaProyectada = totalProvisionFuga * cantidadProyectada;
+    const totalComisionPlataforma = comisionPlatMonto * cantidadProyectada;
+    const totalBonifVendedor = bonifVendedorMonto * cantidadProyectada;
+    const totalIvaMonto = ivaMontoUnit * cantidadProyectada;
+    const totalUtilidadNeta = utilidadNetaUnit * cantidadProyectada;
+
+    const totalDeduciblesUnit = costoRealUnit + comisionPlatMonto + bonifVendedorMonto + ivaMontoUnit;
+    const totalDeduciblesProyectado = totalDeduciblesUnit * cantidadProyectada;
 
     return {
-      costoDirecto,
+      costoDirectoUnit,
       totalProvisionFuga,
-      costoRealTotal,
-      precioSugerido,
-      comisionMonto,
-      utilidadNeta,
-      factorBlindaje
+      costoRealUnit,
+      precioSugeridoUnit,
+      comisionPlatMonto,
+      bonifVendedorMonto,
+      ivaMontoUnit,
+      utilidadNetaUnit,
+      // Proyecciones por cantidad
+      cantidadProyectada,
+      totalVentasProyectadas,
+      totalCostoProducto,
+      totalPickingEmpaque,
+      totalOtrosGastos,
+      totalProvisionFugaProyectada,
+      totalComisionPlataforma,
+      totalBonifVendedor,
+      totalIvaMonto,
+      totalUtilidadNeta,
+      totalDeduciblesProyectado
     };
-  }, [simCogs, simOps, simOtros, simMargenDeseado, simDevRate, simLossRate, simPlatFee, simCanal]);
+  }, [simCogs, simOps, simOtros, simMargenDeseado, simDevRate, simLossRate, simBonifVendedor, simPlatFee, simCantidadDroko, simAplicaIvaDroko, simTarifaIvaDroko, simCantidadEcom, simAplicaIvaEcom, simTarifaIvaEcom, simCanal]);
 
   // ==========================================
   // 🔍 DIAGNÓSTICO FINANCIERO MASIVO (FIREBASE)
@@ -127,40 +189,41 @@ export default function CalculadoraPage() {
     let alertas = 0;
     let perdidas = 0;
 
-    // Parámetros estándar según el canal auditado
     let feePct = 0;
     let devPct = 0;
     let lossPct = 0;
     let targetM = 0.20;
 
     if (auditCanal === 'POS') {
-      feePct = 0.015; devPct = 0; lossPct = 0.02; targetM = 0.25;
+      feePct = 0; devPct = 0; lossPct = 0; targetM = 0.25;
     } else if (auditCanal === 'MAYOR') {
-      feePct = 0; devPct = 0.01; lossPct = 0.01; targetM = 0.12;
+      feePct = 0; devPct = 0; lossPct = 0; targetM = 0.12;
+    } else if (auditCanal === 'ECOM') {
+      feePct = 0; devPct = 0.18; lossPct = 0.05; targetM = 0.25;
     } else {
-      feePct = 0.035; devPct = 0.18; lossPct = 0.05; targetM = 0.20;
+      // DROKO
+      feePct = 0.01; devPct = 0; lossPct = 0; targetM = 0.20;
     }
 
     const listaAnalizada = productos.map(p => {
       const cogs = Number(p.costo_importacion) || 0;
-      const ops = auditCanal === 'DROKO' ? (Number(p.costo_fulfilment) || 0) : 0;
+      const ops = auditCanal === 'ECOM' ? (Number(p.costo_fulfilment) || 0) : 0;
       const costoDirecto = cogs + ops;
 
       const provFuga = ((ops * 2) * devPct) + ((cogs + ops) * lossPct);
       const costoReal = costoDirecto + provFuga;
 
-      // Obtener el precio según el canal auditado
       let precioActual = 0;
       if (auditCanal === 'POS') precioActual = Number(p.plocal || p.precio) || 0;
       else if (auditCanal === 'MAYOR') precioActual = Number(p.pmayor) || 0;
-      else precioActual = Number(p.pdroko || p.pecom || p.precio) || 0;
+      else if (auditCanal === 'ECOM') precioActual = Number(p.pecom || p.precio) || 0;
+      else precioActual = Number(p.pdroko || p.precio) || 0;
 
       const comision = precioActual * feePct;
       const ingresoNeto = precioActual - comision;
       const utilidadNeta = ingresoNeto - costoReal;
       const margenNetoReal = precioActual > 0 ? (utilidadNeta / precioActual) : -1;
 
-      // Cálculo del precio blindado sugerido
       const den = 1 - targetM - feePct;
       const precioSugerido = den > 0 ? (costoReal / den) : (costoReal * 2);
 
@@ -187,7 +250,6 @@ export default function CalculadoraPage() {
       };
     });
 
-    // Filtros de búsqueda y estado
     const filtrados = listaAnalizada.filter(p => {
       const matchQ = String(p.nombre || '').toLowerCase().includes(auditSearch.toLowerCase()) ||
                      String(p.sku || '').toLowerCase().includes(auditSearch.toLowerCase());
@@ -208,12 +270,15 @@ export default function CalculadoraPage() {
     };
   }, [productos, auditCanal, auditSearch, auditFiltroSalud]);
 
-  // Actualizar precio de un producto en Firebase con el valor blindado sugerido
   const handleAplicarPrecioSugerido = async (p: any) => {
     if (!p.sku) return;
     setUpdatingSku(p.sku);
     try {
-      const fieldName = auditCanal === 'POS' ? 'plocal' : (auditCanal === 'MAYOR' ? 'pmayor' : 'pdroko');
+      let fieldName = 'precio';
+      if (auditCanal === 'POS') fieldName = 'plocal';
+      else if (auditCanal === 'MAYOR') fieldName = 'pmayor';
+      else if (auditCanal === 'ECOM') fieldName = 'pecom';
+      else if (auditCanal === 'DROKO') fieldName = 'pdroko';
       
       const updateData: any = {
         [fieldName]: Math.round(p.precioSugerido),
@@ -231,34 +296,8 @@ export default function CalculadoraPage() {
     }
   };
 
-  // ==========================================
-  // EXPORTAR SIMULACIÓN COMO IMAGEN (PNG)
-  // ==========================================
-  const handleExportarImagen = () => {
-    const area = document.getElementById('area-blindaje-completa');
-    if (!area) return;
-
-    const capture = () => {
-      (window as any).html2canvas(area, { scale: 2, backgroundColor: '#F4F5F7' }).then((canvas: HTMLCanvasElement) => {
-        const link = document.createElement('a');
-        link.download = `Analisis_Blindaje_LoboStock_${new Date().toISOString().split('T')[0]}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-      });
-    };
-
-    if (!(window as any).html2canvas) {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-      script.onload = () => capture();
-      document.body.appendChild(script);
-    } else {
-      capture();
-    }
-  };
-
   return (
-    <div id="area-blindaje-completa" className="min-h-screen bg-[#F4F5F7] text-gray-800 p-6 md:p-10 font-sans relative pb-20">
+    <div className="min-h-screen bg-[#F4F5F7] text-gray-800 p-6 md:p-10 font-sans relative pb-20">
       
       {/* CABECERA PRINCIPAL */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-gray-200 pb-6">
@@ -276,31 +315,6 @@ export default function CalculadoraPage() {
             Calcula precios de venta reales absorbiendo comisiones de pasarela, costos de logística inversa y mermas operativas para proteger la utilidad neta de tu empresa.
           </p>
         </div>
-
-        {/* BOTONES DE DESCARGA E IMPRESIÓN */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={handleExportarImagen}
-            className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-800 font-satoshi-black px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-2 font-bold"
-          >
-            <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span>Descargar Imagen</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="bg-[#FFD800] hover:bg-[#FDCB13] text-[#222222] font-satoshi-black px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-2 font-bold"
-          >
-            <svg className="w-4 h-4 text-[#222222]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            <span>PDF / Imprimir</span>
-          </button>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
@@ -310,7 +324,9 @@ export default function CalculadoraPage() {
           <div className="bg-[#222222] text-white rounded-2xl p-6 shadow-md border border-gray-800 space-y-5">
             <div className="flex justify-between items-center border-b border-gray-800 pb-3">
               <h2 className="text-sm font-satoshi-black uppercase text-[#FFD800] tracking-wider font-bold flex items-center gap-2">
-                <span>⚡</span>
+                <svg className="w-4 h-4 text-[#FFD800]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
                 <span>Simulador de Blindaje</span>
               </h2>
 
@@ -319,7 +335,7 @@ export default function CalculadoraPage() {
                 <button
                   type="button"
                   onClick={() => setSimCanal('POS')}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-satoshi-black transition ${
+                  className={`px-2 py-1 rounded-lg text-[10px] font-satoshi-black transition ${
                     simCanal === 'POS' ? 'bg-[#FFD800] text-[#222222] font-bold' : 'text-gray-400 hover:text-white'
                   }`}
                 >
@@ -328,7 +344,7 @@ export default function CalculadoraPage() {
                 <button
                   type="button"
                   onClick={() => setSimCanal('MAYOR')}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-satoshi-black transition ${
+                  className={`px-2 py-1 rounded-lg text-[10px] font-satoshi-black transition ${
                     simCanal === 'MAYOR' ? 'bg-[#FFD800] text-[#222222] font-bold' : 'text-gray-400 hover:text-white'
                   }`}
                 >
@@ -336,8 +352,17 @@ export default function CalculadoraPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setSimCanal('ECOM')}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-satoshi-black transition ${
+                    simCanal === 'ECOM' ? 'bg-[#FFD800] text-[#222222] font-bold' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  E-Com
+                </button>
+                <button
+                  type="button"
                   onClick={() => setSimCanal('DROKO')}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-satoshi-black transition ${
+                  className={`px-2 py-1 rounded-lg text-[10px] font-satoshi-black transition ${
                     simCanal === 'DROKO' ? 'bg-[#FFD800] text-[#222222] font-bold' : 'text-gray-400 hover:text-white'
                   }`}
                 >
@@ -346,9 +371,9 @@ export default function CalculadoraPage() {
               </div>
             </div>
 
-            {/* INPUTS DEL SIMULADOR (SIN FLECHITAS SPINNER) */}
+            {/* INPUTS DEL SIMULADOR */}
             <div className="space-y-4 text-xs font-satoshi-regular">
-              <div className={`grid gap-3 ${simCanal === 'DROKO' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div className={`grid gap-3 ${simCanal === 'ECOM' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <div>
                   <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Costo Producto (COP)</label>
                   <input
@@ -360,8 +385,8 @@ export default function CalculadoraPage() {
                   />
                 </div>
 
-                {/* PICKING Y EMPAQUE SOLO APARECE CUANDO EL CANAL ES DROKO */}
-                {simCanal === 'DROKO' && (
+                {/* PICKING Y EMPAQUE SOLO EN E-COMMERCE */}
+                {simCanal === 'ECOM' && (
                   <div>
                     <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Picking / Empaque (COP)</label>
                     <input
@@ -399,58 +424,184 @@ export default function CalculadoraPage() {
                 </div>
               </div>
 
-              {/* SECCIÓN FACTORES DE FUGA */}
-              <div className="bg-[#1A1A1A] p-4 rounded-xl border border-gray-800 space-y-3">
-                <span className="block text-[10px] font-satoshi-black text-red-400 uppercase tracking-wider font-bold">
-                  ⚠️ Factores de Fuga & Operación
-                </span>
+              {/* OPCIONES DE PROYECCIÓN E IVA PARA E-COMMERCE */}
+              {simCanal === 'ECOM' && (
+                <div className="bg-[#1A1A1A] p-4 rounded-xl border border-gray-800 space-y-3">
+                  <span className="block text-[10px] font-satoshi-black text-[#FFD800] uppercase tracking-wider font-bold flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-[#FFD800]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                    <span>Proyección de Volumen E-Commerce</span>
+                  </span>
 
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-gray-400">% Devolución Logística:</span>
-                    <span className="font-mono text-red-400 font-bold">{simDevRate}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="40"
-                    value={simDevRate}
-                    onChange={(e) => setSimDevRate(Number(e.target.value))}
-                    className="w-full accent-[#FFD800] cursor-pointer"
-                  />
-                </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Cantidad Esperada a Vender</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={simCantidadEcom}
+                        onChange={(e) => setSimCantidadEcom(Math.max(1, Number(e.target.value)))}
+                        className="w-full bg-[#222222] border border-gray-700 rounded-xl p-2 font-mono text-white focus:border-[#FFD800] focus:outline-none text-center font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                    </div>
 
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-gray-400">% Merma / Pérdida en Bodega:</span>
-                    <span className="font-mono text-red-400 font-bold">{simLossRate}%</span>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase">Tarifa IVA E-Com</label>
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="checkIvaEcom"
+                          checked={simAplicaIvaEcom}
+                          onChange={(e) => setSimAplicaIvaEcom(e.target.checked)}
+                          className="rounded bg-[#222222] border-gray-700 text-[#FFD800] focus:ring-0 w-4 h-4 cursor-pointer accent-[#FFD800]"
+                        />
+                        <label htmlFor="checkIvaEcom" className="text-xs text-gray-300 cursor-pointer">
+                          ¿Aplica IVA?
+                        </label>
+                      </div>
+                      {simAplicaIvaEcom && (
+                        <select
+                          value={simTarifaIvaEcom}
+                          onChange={(e) => setSimTarifaIvaEcom(Number(e.target.value))}
+                          className="w-full bg-[#222222] border border-gray-700 rounded-lg p-1 text-[11px] font-mono text-[#FFD800] focus:outline-none mt-1"
+                        >
+                          <option value={19}>IVA 19%</option>
+                          <option value={5}>IVA 5%</option>
+                        </select>
+                      )}
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="20"
-                    value={simLossRate}
-                    onChange={(e) => setSimLossRate(Number(e.target.value))}
-                    className="w-full accent-[#FFD800] cursor-pointer"
-                  />
                 </div>
+              )}
 
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-gray-400">% Comisión Pasarela / Plataforma:</span>
-                    <span className="font-mono text-[#FFD800] font-bold">{simPlatFee}%</span>
+              {/* OPCIONES DE PROYECCIÓN E IVA PARA DROKO */}
+              {simCanal === 'DROKO' && (
+                <div className="bg-[#1A1A1A] p-4 rounded-xl border border-gray-800 space-y-3">
+                  <span className="block text-[10px] font-satoshi-black text-[#FFD800] uppercase tracking-wider font-bold flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-[#FFD800]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    </svg>
+                    <span>Proyección de Volumen Droko</span>
+                  </span>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase mb-1">Cantidad Esperada a Vender</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={simCantidadDroko}
+                        onChange={(e) => setSimCantidadDroko(Math.max(1, Number(e.target.value)))}
+                        className="w-full bg-[#222222] border border-gray-700 rounded-xl p-2 font-mono text-white focus:border-[#FFD800] focus:outline-none text-center font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-satoshi-black text-gray-400 uppercase">Tarifa IVA Droko</label>
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="checkIvaDroko"
+                          checked={simAplicaIvaDroko}
+                          onChange={(e) => setSimAplicaIvaDroko(e.target.checked)}
+                          className="rounded bg-[#222222] border-gray-700 text-[#FFD800] focus:ring-0 w-4 h-4 cursor-pointer accent-[#FFD800]"
+                        />
+                        <label htmlFor="checkIvaDroko" className="text-xs text-gray-300 cursor-pointer">
+                          ¿Aplica IVA?
+                        </label>
+                      </div>
+                      {simAplicaIvaDroko && (
+                        <select
+                          value={simTarifaIvaDroko}
+                          onChange={(e) => setSimTarifaIvaDroko(Number(e.target.value))}
+                          className="w-full bg-[#222222] border border-gray-700 rounded-lg p-1 text-[11px] font-mono text-[#FFD800] focus:outline-none mt-1"
+                        >
+                          <option value={19}>IVA 19%</option>
+                          <option value={5}>IVA 5%</option>
+                        </select>
+                      )}
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="15"
-                    step="0.5"
-                    value={simPlatFee}
-                    onChange={(e) => setSimPlatFee(Number(e.target.value))}
-                    className="w-full accent-[#FFD800] cursor-pointer"
-                  />
+
+                  <div>
+                    <div className="flex justify-between text-[11px] mb-1">
+                      <span className="text-gray-400">% Comisión Plataforma Droko:</span>
+                      <span className="font-mono text-[#FFD800] font-bold">{simPlatFee}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="10"
+                      step="0.5"
+                      value={simPlatFee}
+                      onChange={(e) => setSimPlatFee(Number(e.target.value))}
+                      className="w-full accent-[#FFD800] cursor-pointer"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* SECCIÓN FACTORES DE FUGA & VENDEDOR (SOLO E-COMMERCE) */}
+              {simCanal === 'ECOM' && (
+                <div className="bg-[#1A1A1A] p-4 rounded-xl border border-gray-800 space-y-3">
+                  <span className="block text-[10px] font-satoshi-black text-red-400 uppercase tracking-wider font-bold flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span>Factores de Fuga & Operación</span>
+                  </span>
+
+                  <div>
+                    <div className="flex justify-between text-[11px] mb-1">
+                      <span className="text-gray-400">% Devolución Logística:</span>
+                      <span className="font-mono text-red-400 font-bold">{simDevRate}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="40"
+                      value={simDevRate}
+                      onChange={(e) => setSimDevRate(Number(e.target.value))}
+                      className="w-full accent-[#FFD800] cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-[11px] mb-1">
+                      <span className="text-gray-400">% Merma / Pérdida en Bodega:</span>
+                      <span className="font-mono text-red-400 font-bold">{simLossRate}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="20"
+                      value={simLossRate}
+                      onChange={(e) => setSimLossRate(Number(e.target.value))}
+                      className="w-full accent-[#FFD800] cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-800">
+                    <div className="flex justify-between text-[11px] mb-1">
+                      <span className="text-gray-300 font-bold">% Bonificación Cumplimiento Vendedor:</span>
+                      <span className="font-mono text-[#FFD800] font-bold">{simBonifVendedor}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="15"
+                      step="0.5"
+                      value={simBonifVendedor}
+                      onChange={(e) => setSimBonifVendedor(Number(e.target.value))}
+                      className="w-full accent-[#FFD800] cursor-pointer"
+                    />
+                    <p className="text-[9px] text-gray-500 italic mt-0.5">
+                      Este % se traslada al precio final sin reducir tu margen neto del {simMargenDeseado}%.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -461,23 +612,106 @@ export default function CalculadoraPage() {
                 PRECIO SUGERIDO BLINDADO
               </span>
               <div className="text-4xl font-black text-gray-900 font-satoshi-black">
-                {formatoCOP(calculoSimulador.precioSugerido)}
+                {formatoCOP(calculoSimulador.precioSugeridoUnit)}
               </div>
               <p className="text-[10px] text-emerald-700 font-satoshi-black">
-                Garantiza {simMargenDeseado}% de utilidad neta libre tras pagar mermas y fletes
+                Garantiza {simMargenDeseado}% de utilidad neta libre por unidad
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100 text-xs font-satoshi-regular">
-              <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-center">
-                <span className="text-[9px] text-gray-500 block uppercase font-satoshi-black">Costo Real Total</span>
-                <span className="font-mono font-bold text-gray-900">{formatoCOP(calculoSimulador.costoRealTotal)}</span>
+            {/* DESGLOSE ESPECÍFICO PARA DROKO Y E-COMMERCE (ACUMULADO POR CANTIDAD) */}
+            {(simCanal === 'DROKO' || simCanal === 'ECOM') ? (
+              <div className="space-y-3 pt-3 border-t border-gray-100 text-xs font-satoshi-regular">
+                <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-center">
+                  <span className="text-[10px] text-emerald-800 font-satoshi-black uppercase block font-bold">
+                    Ganancia Total Proyectada ({calculoSimulador.cantidadProyectada} unds)
+                  </span>
+                  <span className="text-2xl font-black text-emerald-900 font-mono">
+                    {formatoCOP(calculoSimulador.totalUtilidadNeta)}
+                  </span>
+                </div>
+
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-1.5 text-[11px]">
+                  <span className="text-[10px] font-satoshi-black uppercase text-gray-600 block font-bold border-b border-gray-200 pb-1">
+                    Desglose de Deducibles ({calculoSimulador.cantidadProyectada} unds):
+                  </span>
+                  <div className="flex justify-between text-gray-600">
+                    <span>Inversión Producto (COGS):</span>
+                    <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalCostoProducto)}</span>
+                  </div>
+
+                  {simCanal === 'ECOM' && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Picking / Empaque:</span>
+                      <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalPickingEmpaque)}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-gray-600">
+                    <span>Otros Gastos Operativos:</span>
+                    <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalOtrosGastos)}</span>
+                  </div>
+
+                  {simCanal === 'ECOM' && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Provisión Fuga / Devoluciones:</span>
+                      <span className="font-mono text-red-600 font-bold">{formatoCOP(calculoSimulador.totalProvisionFugaProyectada)}</span>
+                    </div>
+                  )}
+
+                  {simCanal === 'ECOM' && simBonifVendedor > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Bonificación Vendedor ({simBonifVendedor}%):</span>
+                      <span className="font-mono text-amber-800 font-bold">{formatoCOP(calculoSimulador.totalBonifVendedor)}</span>
+                    </div>
+                  )}
+
+                  {simCanal === 'DROKO' && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Comisión Plataforma Droko ({simPlatFee}%):</span>
+                      <span className="font-mono text-amber-800 font-bold">{formatoCOP(calculoSimulador.totalComisionPlataforma)}</span>
+                    </div>
+                  )}
+
+                  {((simCanal === 'DROKO' && simAplicaIvaDroko) || (simCanal === 'ECOM' && simAplicaIvaEcom)) && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Monto IVA ({simCanal === 'DROKO' ? simTarifaIvaDroko : simTarifaIvaEcom}%):</span>
+                      <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalIvaMonto)}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-gray-900 font-satoshi-black pt-1 border-t border-gray-200 font-bold">
+                    <span>Total Deducibles:</span>
+                    <span className="font-mono text-red-600">{formatoCOP(calculoSimulador.totalDeduciblesProyectado)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-center">
-                <span className="text-[9px] text-gray-500 block uppercase font-satoshi-black">Provisión de Fuga</span>
-                <span className="font-mono font-bold text-red-600">{formatoCOP(calculoSimulador.totalProvisionFuga)}</span>
+            ) : (
+              /* DESGLOSE ESTÁNDAR PARA POS Y MAYOR */
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100 text-xs font-satoshi-regular">
+                <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-center">
+                  <span className="text-[9px] text-gray-500 block uppercase font-satoshi-black">Costo Real Total</span>
+                  <span className="font-mono font-bold text-gray-900">{formatoCOP(calculoSimulador.costoRealUnit)}</span>
+                </div>
+
+                <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 text-center">
+                  <span className="text-[9px] text-emerald-800 block uppercase font-satoshi-black">Utilidad Neta / Und</span>
+                  <span className="font-mono font-bold text-emerald-900">{formatoCOP(calculoSimulador.utilidadNetaUnit)}</span>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* BOTÓN IMPRIMIR RESULTADO ABAJO EN LA CALCULADORA */}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="w-full bg-[#FFD800] hover:bg-[#FDCB13] text-[#222222] font-satoshi-black py-3 rounded-xl text-xs uppercase tracking-wider transition shadow-sm flex items-center justify-center gap-2 font-bold"
+            >
+              <svg className="w-4 h-4 text-[#222222]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              <span>Imprimir resultado</span>
+            </button>
           </div>
         </aside>
 
@@ -500,7 +734,7 @@ export default function CalculadoraPage() {
                 <button
                   type="button"
                   onClick={() => setAuditCanal('POS')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
                     auditCanal === 'POS' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-xs' : 'text-gray-500 hover:text-gray-900'
                   }`}
                 >
@@ -509,7 +743,7 @@ export default function CalculadoraPage() {
                 <button
                   type="button"
                   onClick={() => setAuditCanal('MAYOR')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
                     auditCanal === 'MAYOR' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-xs' : 'text-gray-500 hover:text-gray-900'
                   }`}
                 >
@@ -517,8 +751,17 @@ export default function CalculadoraPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setAuditCanal('ECOM')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
+                    auditCanal === 'ECOM' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-xs' : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  E-Com
+                </button>
+                <button
+                  type="button"
                   onClick={() => setAuditCanal('DROKO')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-satoshi-black transition ${
                     auditCanal === 'DROKO' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-xs' : 'text-gray-500 hover:text-gray-900'
                   }`}
                 >
@@ -527,7 +770,7 @@ export default function CalculadoraPage() {
               </div>
             </div>
 
-            {/* WIDGETS SEMÁFORO FINANCIERO */}
+            {/* WIDGETS SEMÁFORO FINANCIERO CON ÍCONOS VECTORIALES 2D */}
             <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => setAuditFiltroSalud('SALUDABLE')}
@@ -535,7 +778,10 @@ export default function CalculadoraPage() {
                   auditFiltroSalud === 'SALUDABLE' ? 'bg-emerald-50 border-emerald-400' : 'bg-gray-50 border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <span className="text-[10px] font-satoshi-black text-emerald-800 uppercase block font-bold">🟢 Blindados</span>
+                <span className="flex items-center gap-1.5 text-[10px] font-satoshi-black text-emerald-800 uppercase font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shrink-0"></span>
+                  <span>Blindados</span>
+                </span>
                 <span className="text-xl font-black text-emerald-900">{auditoriaCatalogo.saludables} SKUs</span>
               </button>
 
@@ -545,7 +791,10 @@ export default function CalculadoraPage() {
                   auditFiltroSalud === 'ALERTA' ? 'bg-amber-50 border-amber-400' : 'bg-gray-50 border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <span className="text-[10px] font-satoshi-black text-amber-800 uppercase block font-bold">🟡 Bajo Margen</span>
+                <span className="flex items-center gap-1.5 text-[10px] font-satoshi-black text-amber-800 uppercase font-bold">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block shrink-0"></span>
+                  <span>Bajo Margen</span>
+                </span>
                 <span className="text-xl font-black text-amber-900">{auditoriaCatalogo.alertas} SKUs</span>
               </button>
 
@@ -555,7 +804,10 @@ export default function CalculadoraPage() {
                   auditFiltroSalud === 'PERDIDA' ? 'bg-red-50 border-red-400' : 'bg-gray-50 border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <span className="text-[10px] font-satoshi-black text-red-800 uppercase block font-bold">🔴 Fuga Capital</span>
+                <span className="flex items-center gap-1.5 text-[10px] font-satoshi-black text-red-800 uppercase font-bold">
+                  <span className="w-2 h-2 rounded-full bg-red-500 inline-block shrink-0"></span>
+                  <span>Fuga Capital</span>
+                </span>
                 <span className="text-xl font-black text-red-900">{auditoriaCatalogo.perdidas} SKUs</span>
               </button>
             </div>
