@@ -66,6 +66,7 @@ export default function PerfilPage() {
   };
 
   useEffect(() => {
+    // Nota: Mantenemos la llave 'atom_user_session' para no romper sesiones activas
     const savedUser = localStorage.getItem('atom_user_session');
     if (savedUser) {
       try {
@@ -294,24 +295,24 @@ export default function PerfilPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#1D2935] text-slate-100 p-4 md:p-6 font-sans relative pb-16">
+    <div className="min-h-screen bg-[#F4F5F7] text-gray-800 p-4 md:p-6 font-sans relative pb-24">
       
       {/* HEADER SUPERIOR COMPACTO */}
       <header className="max-w-5xl mx-auto mb-4">
-        <h1 className="text-2xl font-black text-white tracking-tight font-satoshi-black">
+        <h1 className="text-2xl font-black text-gray-900 tracking-tight font-satoshi-black">
           Perfil y Configuración
         </h1>
-        <p className="text-[11px] text-[#A0AEC0] mt-0.5 font-satoshi-regular">
+        <p className="text-[11px] text-gray-500 mt-0.5 font-satoshi-regular">
           Gestiona tus credenciales de acceso y la información legal de facturación.
         </p>
 
         {/* PESTAÑAS (TABS) */}
-        <div className="flex border-b border-slate-700/60 mt-4 gap-6">
+        <div className="flex border-b border-gray-200 mt-4 gap-6">
           <button
             type="button"
             onClick={() => setActiveTab('PERFIL')}
             className={`pb-2 text-xs font-satoshi-black uppercase tracking-wider transition-all relative flex items-center gap-1.5 ${
-              activeTab === 'PERFIL' ? 'text-[#0DE8C0]' : 'text-slate-400 hover:text-white'
+              activeTab === 'PERFIL' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-700'
             }`}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -319,7 +320,7 @@ export default function PerfilPage() {
             </svg>
             <span>Perfil de Usuario</span>
             {activeTab === 'PERFIL' && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#0DE8C0] rounded-full"></span>
+              <span className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#FFD800] rounded-t-md"></span>
             )}
           </button>
 
@@ -327,7 +328,7 @@ export default function PerfilPage() {
             type="button"
             onClick={() => setActiveTab('LEGALES')}
             className={`pb-2 text-xs font-satoshi-black uppercase tracking-wider transition-all relative flex items-center gap-1.5 ${
-              activeTab === 'LEGALES' ? 'text-[#0DE8C0]' : 'text-slate-400 hover:text-white'
+              activeTab === 'LEGALES' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-700'
             }`}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -335,7 +336,7 @@ export default function PerfilPage() {
             </svg>
             <span>Datos Legales y Fiscales</span>
             {activeTab === 'LEGALES' && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#0DE8C0] rounded-full"></span>
+              <span className="absolute bottom-0 left-0 right-0 h-[3px] bg-[#FFD800] rounded-t-md"></span>
             )}
           </button>
         </div>
@@ -349,29 +350,29 @@ export default function PerfilPage() {
           {activeTab === 'PERFIL' && (
             <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in">
               
-              <div className="bg-[#253443] border border-slate-700/50 rounded-xl p-4 flex items-center gap-4 shadow-lg">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#0DE8C0] to-purple-600 flex items-center justify-center text-white font-satoshi-black text-xl shadow-inner shrink-0">
+              <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4 shadow-sm">
+                <div className="w-12 h-12 rounded-xl bg-[#2C2C2C] flex items-center justify-center text-[#FFD800] font-satoshi-black text-xl shadow-inner shrink-0">
                   {nombre ? nombre.charAt(0).toUpperCase() : 'U'}
                 </div>
                 <div className="flex-1 truncate">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-satoshi-black text-white truncate">{nombre || 'Usuario ATOM'}</h2>
-                    <span className="bg-[#1D2935] border border-[#0DE8C0]/40 text-[#0DE8C0] text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    <h2 className="text-lg font-satoshi-black text-gray-900 truncate">{nombre || 'Usuario LOBO'}</h2>
+                    <span className="bg-gray-100 border border-gray-200 text-gray-700 text-[9px] font-satoshi-black px-2 py-0.5 rounded-full uppercase tracking-wider">
                       {userAuth?.rol || 'ADMIN'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-[#A0AEC0] font-satoshi-regular mt-0.5 truncate">{userEmail}</p>
+                  <p className="text-[11px] text-gray-500 font-satoshi-regular mt-0.5 truncate">{userEmail}</p>
                 </div>
               </div>
 
-              <div className="bg-[#253443] border border-slate-700/50 rounded-xl p-5 shadow-lg space-y-3.5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
                 <div>
-                  <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                     Nombre Completo *
                   </label>
                   <input
                     type="text"
-                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white focus:outline-none font-satoshi-regular transition"
+                    className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                     value={nombre}
                     onChange={(e) => setNombre(e.target.value)}
                     required
@@ -379,45 +380,45 @@ export default function PerfilPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                     Correo Electrónico / Usuario
                   </label>
                   <div className="relative">
                     <input
                       type="text"
-                      className="w-full bg-[#1D2935]/60 border border-slate-700/80 rounded-lg p-2.5 pr-8 text-xs text-slate-300 font-satoshi-regular cursor-not-allowed"
+                      className="w-full bg-gray-100 border border-gray-200 rounded-lg p-2.5 pr-8 text-xs text-gray-500 font-satoshi-regular cursor-not-allowed"
                       value={userEmail}
                       disabled
                     />
-                    <svg className="w-3.5 h-3.5 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                     Teléfono de Contacto
                   </label>
                   <div className="flex gap-2">
                     <select
-                      className={`bg-[#1D2935] border border-slate-700 text-xs font-satoshi-black rounded-lg px-2.5 focus:outline-none focus:border-[#0DE8C0] cursor-pointer ${
-                        !prefijoPais ? 'text-slate-400' : 'text-[#0DE8C0]'
+                      className={`bg-gray-50 border border-gray-300 text-xs font-satoshi-black rounded-lg px-2.5 focus:outline-none focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 cursor-pointer transition ${
+                        !prefijoPais ? 'text-gray-400' : 'text-gray-900'
                       }`}
                       value={prefijoPais}
                       onChange={(e) => setPrefijoPais(e.target.value)}
                       required
                     >
-                      <option value="" disabled className="text-slate-500 bg-[#1D2935]">Sel...</option>
+                      <option value="" disabled className="text-gray-500 bg-white">Sel...</option>
                       {paisesLatam.map((p) => (
-                        <option key={p.codigo} value={p.codigo} className="text-white bg-[#1D2935]">
+                        <option key={p.codigo} value={p.codigo} className="text-gray-900 bg-white">
                           {p.bandera} {p.codigo}
                         </option>
                       ))}
                     </select>
                     <input
                       type="text"
-                      className="flex-1 bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white focus:outline-none font-satoshi-regular transition"
+                      className="flex-1 bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                       placeholder="300 123 4567"
                       value={telefono}
                       onChange={(e) => setTelefono(e.target.value)}
@@ -426,11 +427,11 @@ export default function PerfilPage() {
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-700/60">
+                <div className="pt-3 border-t border-gray-100">
                   <button
                     type="button"
                     onClick={() => setShowSeguridad(!showSeguridad)}
-                    className="flex items-center gap-1.5 text-xs font-satoshi-black text-[#0DE8C0] hover:underline"
+                    className="flex items-center gap-1.5 text-xs font-satoshi-black text-[#222222] hover:text-gray-600 transition"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
@@ -439,22 +440,22 @@ export default function PerfilPage() {
                   </button>
 
                   {showSeguridad && (
-                    <div className="mt-3 p-3 bg-[#1D2935] rounded-lg border border-slate-700/80 space-y-3 animate-in slide-in-from-top-2">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-3 animate-in slide-in-from-top-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-[10px] font-satoshi-black text-slate-300 uppercase mb-0.5">Nueva Contraseña</label>
+                          <label className="block text-[10px] font-satoshi-black text-gray-600 uppercase mb-0.5">Nueva Contraseña</label>
                           <input
                             type="password"
-                            className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-md p-2 text-xs text-white focus:outline-none font-satoshi-regular"
+                            className="w-full bg-white border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-md p-2 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                             value={passNueva}
                             onChange={(e) => setPassNueva(e.target.value)}
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-satoshi-black text-slate-300 uppercase mb-0.5">Confirmar Nueva Contraseña</label>
+                          <label className="block text-[10px] font-satoshi-black text-gray-600 uppercase mb-0.5">Confirmar Nueva Contraseña</label>
                           <input
                             type="password"
-                            className="w-full bg-[#253443] border border-slate-700 focus:border-[#0DE8C0] rounded-md p-2 text-xs text-white focus:outline-none font-satoshi-regular"
+                            className="w-full bg-white border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-md p-2 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                             value={passConfirm}
                             onChange={(e) => setPassConfirm(e.target.value)}
                           />
@@ -470,13 +471,13 @@ export default function PerfilPage() {
 
           {/* PESTAÑA 2: DATOS LEGALES Y FISCALES */}
           {activeTab === 'LEGALES' && (
-            <div className="bg-[#253443] border border-slate-700/50 rounded-xl p-4 lg:p-5 shadow-lg space-y-4 animate-in fade-in">
-              <div className="border-b border-slate-700/60 pb-2">
-                <h3 className="text-sm font-satoshi-black text-white uppercase tracking-wider">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 lg:p-5 shadow-sm space-y-4 animate-in fade-in">
+              <div className="border-b border-gray-100 pb-2">
+                <h3 className="text-sm font-satoshi-black text-gray-900 uppercase tracking-wider">
                   Información Legal de Facturación
                 </h3>
-                <p className="text-[11px] text-[#A0AEC0] font-satoshi-regular mt-0.5">
-                  Los datos aquí ingresados se guardarán en la colección <span className="text-[#0DE8C0] font-mono">Factura_Electronica</span>.
+                <p className="text-[11px] text-gray-500 font-satoshi-regular mt-0.5">
+                  Los datos aquí ingresados se guardarán en la colección <span className="text-[#222222] font-mono font-bold">Factura_Electronica</span>.
                 </p>
               </div>
 
@@ -485,12 +486,12 @@ export default function PerfilPage() {
                 {/* COLUMNA 1 */}
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                    <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                       Razón Social / Nombre Comercial *
                     </label>
                     <input
                       type="text"
-                      className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white focus:outline-none font-satoshi-regular transition"
+                      className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                       placeholder="Distribuidora Ejemplo S.A.S."
                       value={razonSocial}
                       onChange={(e) => setRazonSocial(e.target.value)}
@@ -499,12 +500,12 @@ export default function PerfilPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                    <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                       NIT / RUT / ID Fiscal *
                     </label>
                     <input
                       type="text"
-                      className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none transition"
+                      className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 font-mono focus:outline-none transition"
                       placeholder="900.123.456-7"
                       value={nit}
                       onChange={(e) => setNit(e.target.value)}
@@ -513,11 +514,11 @@ export default function PerfilPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                    <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                       Régimen Fiscal
                     </label>
                     <select
-                      className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-satoshi-black focus:outline-none cursor-pointer"
+                      className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 font-satoshi-black focus:outline-none cursor-pointer transition"
                       value={regimenFiscal}
                       onChange={(e) => setRegimenFiscal(e.target.value)}
                     >
@@ -532,11 +533,11 @@ export default function PerfilPage() {
                 {/* COLUMNA 2 */}
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                    <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                       País
                     </label>
                     <select
-                      className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white font-satoshi-black focus:outline-none cursor-pointer"
+                      className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 font-satoshi-black focus:outline-none cursor-pointer transition"
                       value={pais}
                       onChange={(e) => setPais(e.target.value)}
                     >
@@ -549,12 +550,12 @@ export default function PerfilPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                    <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                       Ciudad
                     </label>
                     <input
                       type="text"
-                      className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white focus:outline-none font-satoshi-regular transition"
+                      className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                       placeholder="Cali / Bogotá"
                       value={ciudad}
                       onChange={(e) => setCiudad(e.target.value)}
@@ -562,12 +563,12 @@ export default function PerfilPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                    <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                       Teléfono Corporativo
                     </label>
                     <input
                       type="text"
-                      className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white focus:outline-none font-satoshi-regular transition"
+                      className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                       placeholder="+57 602 123 4567"
                       value={telefonoCorp}
                       onChange={(e) => setTelefonoCorp(e.target.value)}
@@ -578,14 +579,14 @@ export default function PerfilPage() {
               </div>
 
               {/* FILA INFERIOR COMPACTA */}
-              <div className="space-y-3 pt-3 border-t border-slate-700/60">
+              <div className="space-y-3 pt-3 border-t border-gray-100">
                 <div>
-                  <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                     Dirección Fiscal / Sede Central
                   </label>
                   <input
                     type="text"
-                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white focus:outline-none font-satoshi-regular transition"
+                    className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                     placeholder="Carrera 10 # 15-20, Oficina 501"
                     value={direccionFiscal}
                     onChange={(e) => setDireccionFiscal(e.target.value)}
@@ -593,12 +594,12 @@ export default function PerfilPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-satoshi-black text-white uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-satoshi-black text-gray-700 uppercase tracking-wider mb-1">
                     Correo Electrónico de Facturación
                   </label>
                   <input
                     type="email"
-                    className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-lg p-2.5 text-xs text-white focus:outline-none font-satoshi-regular transition"
+                    className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none font-satoshi-regular transition"
                     placeholder="facturacion@miempresa.com"
                     value={emailFacturacion}
                     onChange={(e) => setEmailFacturacion(e.target.value)}
@@ -609,13 +610,13 @@ export default function PerfilPage() {
             </div>
           )}
 
-          {/* BARRA FLOTANTE INFERIOR REDUCIDA */}
-          <div className="fixed bottom-0 left-0 right-0 bg-[#1D2935]/95 border-t border-slate-700/80 backdrop-blur-md p-2.5 z-40">
+          {/* BARRA FLOTANTE INFERIOR REDUCIDA Y CLARA */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white/95 border-t border-gray-200 backdrop-blur-md p-3 z-40">
             <div className="max-w-5xl mx-auto flex items-center justify-between">
-              <div className="text-[11px] text-[#A0AEC0] font-satoshi-regular hidden md:block">
+              <div className="text-[11px] text-gray-500 font-satoshi-regular hidden md:block">
                 {hayCambios() ? (
-                  <span className="text-[#0DE8C0] font-satoshi-black flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#0DE8C0] animate-pulse"></span>
+                  <span className="text-[#222222] font-satoshi-black flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#FFD800] animate-pulse"></span>
                     Tienes cambios sin guardar
                   </span>
                 ) : (
@@ -626,13 +627,13 @@ export default function PerfilPage() {
               <button
                 type="submit"
                 disabled={!hayCambios() || isSaving}
-                className="w-full md:w-auto ml-auto bg-[#C81FDA] hover:bg-[#a617b5] disabled:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-satoshi-black px-6 py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all duration-300 shadow-md flex items-center justify-center gap-1.5"
+                className="w-full md:w-auto ml-auto bg-[#FFD800] hover:bg-[#FDCB13] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-[#222222] font-satoshi-black px-6 py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center justify-center gap-1.5"
               >
                 {isSaving ? (
                   <span>Guardando en BD...</span>
                 ) : (
                   <>
-                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                     </svg>
                     <span>Guardar Cambios</span>
