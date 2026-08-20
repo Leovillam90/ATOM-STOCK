@@ -6,7 +6,7 @@ export default function GlosarioPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSection, setActiveSection] = useState<string | null>('conceptos-basicos');
 
-  // CONTENIDO DEL MANUAL Y GLOSARIO (Actualizado, claro y sin términos técnicos complejos)
+  // CONTENIDO DEL MANUAL Y GLOSARIO (100% Actualizado a las últimas funciones)
   const manualSections = [
     {
       id: 'conceptos-basicos',
@@ -18,16 +18,17 @@ export default function GlosarioPage() {
       ),
       content: (
         <div className="space-y-4 text-sm text-gray-600 font-satoshi-regular leading-relaxed">
-          <p><strong className="text-gray-900 font-satoshi-black">SKU (Código de Producto):</strong> Es el código único que identifica a cada artículo en tu inventario. Piensa en él como la "cédula" del producto. No pueden existir dos productos con el mismo SKU.</p>
-          <p><strong className="text-gray-900 font-satoshi-black">Base Gravable:</strong> Es el valor real de un producto antes de sumarle los impuestos (como el IVA). Si ingresas un precio con el IVA ya incluido, el sistema hace la matemática por ti y separa la base gravable automáticamente.</p>
-          <p><strong className="text-gray-900 font-satoshi-black">Consumidor Final (CF):</strong> Es un cliente "genérico". Se utiliza cuando haces una venta rápida en el mostrador y el comprador no desea dar su nombre, cédula o correo.</p>
-          <p><strong className="text-gray-900 font-satoshi-black">Documento de Venta:</strong> Es el recibo o comprobante que se le entrega al cliente tras una compra. Contiene el detalle de lo que pagó y los impuestos aplicados.</p>
+          <p><strong className="text-gray-900 font-satoshi-black">SKU (Código de Producto):</strong> Es la clave única e irrepetible que identifica a cada artículo en tu inventario. Funciona como la cédula del producto.</p>
+          <p><strong className="text-gray-900 font-satoshi-black">TRM (Tasa Representativa del Mercado):</strong> Es la tasa de cambio de Pesos Colombianos (COP) a Dólares (USD). Se utiliza al exportar archivos tipo *Packing List* para convertir automáticamente tus costos y precios de venta.</p>
+          <p><strong className="text-gray-900 font-satoshi-black">Bodega Droko:</strong> Es un centro de acopio o almacén en el sistema creado exclusivamente para aislar y controlar el inventario destinado a canales de e-commerce y dropshipping.</p>
+          <p><strong className="text-gray-900 font-satoshi-black">Base Gravable:</strong> Es el valor neto de un producto antes de sumar los impuestos (IVA). Si marcas que el precio ya incluye IVA, LOBO STOCK discrimina y separa la base de forma automática.</p>
+          <p><strong className="text-gray-900 font-satoshi-black">Consumidor Final (CF):</strong> Cliente genérico que se utiliza en la caja (POS) cuando realizas una venta rápida y el comprador no solicita factura a su nombre.</p>
         </div>
       )
     },
     {
       id: 'configuracion-inicial',
-      title: '1. Configuración Inicial (Sedes y Equipo)',
+      title: '1. Configuración Inicial (Sedes y Bodega Droko)',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -36,17 +37,18 @@ export default function GlosarioPage() {
       ),
       content: (
         <div className="space-y-4 text-sm text-gray-600 font-satoshi-regular leading-relaxed">
-          <p>Para que LOBO STOCK funcione correctamente, necesita saber dónde están tus productos y quién los vende:</p>
+          <p>Para administrar tu inventario debes registrar tus ubicaciones físicas en <em>Sucursales / Sedes</em>:</p>
           <ul className="list-disc pl-5 space-y-2">
-            <li><strong>Paso 1 - Crear Sedes:</strong> Ve al menú <em>Sucursales / Sedes</em>. Aquí debes registrar tus tiendas físicas o bodegas. El inventario siempre pertenece a una sede específica.</li>
-            <li><strong>Paso 2 - Registrar Equipo:</strong> Ve a <em>Equipo / Vendedores</em>. Aquí le creas un usuario y contraseña a tus empleados para que puedan entrar al sistema. A cada uno le puedes asignar un rol (ej. Vendedor) y decirle en qué sede va a trabajar.</li>
+            <li><strong>Crear Sedes Estándar:</strong> Registra Puntos de Venta (POS) o Bodegas Logísticas generales.</li>
+            <li><strong>Crear Bodega DROKO:</strong> Junto al botón de nueva sede dispones del botón amarillo <em>"Crear Bodega DROKO"</em>. Si ya cuentas con una bodega creada, tomará sus datos de ubicación automáticamente para habilitar esta bodega especial.</li>
+            <li><strong>Protección de Nombre:</strong> El nombre de la *Bodega DROKO* queda protegido por el sistema para garantizar la integración en exportaciones y reportes. Una vez creada, la opción desaparece del menú superior para evitar duplicados.</li>
           </ul>
         </div>
       )
     },
     {
       id: 'productos-inventario',
-      title: '2. Catálogo e Inventario',
+      title: '2. Catálogo y Estructura de Precios (Nivel Droko)',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -54,14 +56,41 @@ export default function GlosarioPage() {
       ),
       content: (
         <div className="space-y-4 text-sm text-gray-600 font-satoshi-regular leading-relaxed">
-          <p>En la sección de <em>Catálogo de Productos</em> es donde le das vida a tu inventario. Al crear un producto nuevo, puedes ponerle distintos precios dependiendo de dónde lo vendas (al detal, al por mayor o en internet).</p>
-          <p><strong className="text-gray-900 font-satoshi-black">Inventario Separado:</strong> LOBO STOCK es muy organizado. Si tienes 10 camisetas en la Tienda A y 5 en la Tienda B, el sistema nunca las mezclará. Si un vendedor hace una factura en la Tienda A, solo se descontará de la Tienda A.</p>
+          <p>En el <em>Consolidado de Productos</em> administras tus tarifas y stock distribuido:</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li><strong className="text-gray-900 font-satoshi-black">Precios Diferenciados:</strong> Puedes definir hasta 4 precios finales: *Por Mayor*, *Tienda POS*, *E-Commerce* y *Droko*.</li>
+            <li><strong className="text-gray-900 font-satoshi-black">Campo Especial Droko ($):</strong> El campo de precio Droko se habilita en el formulario cuando tienes creada la Bodega Droko en tu cuenta. Se utiliza para asignar la tarifa de venta exclusiva para esta plataforma.</li>
+            <li><strong className="text-gray-900 font-satoshi-black">Aislamiento de Inventario:</strong> El stock que asignes a la Bodega Droko se mantendrá independiente del inventario de tus tiendas físicas.</li>
+          </ul>
+        </div>
+      )
+    },
+    {
+      id: 'exportacion-droko',
+      title: '3. Exportación de Inventarios (General y Droko USD)',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+      content: (
+        <div className="space-y-4 text-sm text-gray-600 font-satoshi-regular leading-relaxed">
+          <p>En el botón superior <em>Exportar (CSV)</em> del catálogo, el usuario Administrador cuenta con dos opciones especializadas:</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li><strong className="text-gray-900 font-satoshi-black">Exportar General (Todo):</strong> Descarga el consolidado completo de la empresa con todos los productos, costos, tarifas e inventario acumulado.</li>
+            <li><strong className="text-gray-900 font-satoshi-black">Exportar Droko (Packing List):</strong> Genera un archivo CSV filtrado de forma inteligente:
+              <ol className="list-decimal pl-5 mt-1 space-y-1">
+                <li>Exporta <strong>únicamente</strong> los productos que tienen stock asignado a la Bodega Droko.</li>
+                <li>Pide la **TRM** al momento de descargar para convertir automáticamente los costos y el *Precio Droko* de Pesos Colombianos (COP) a Dólares (USD).</li>
+              </ol>
+            </li>
+          </ul>
         </div>
       )
     },
     {
       id: 'traslados',
-      title: '3. Traslados de Mercancía',
+      title: '4. Traslados de Mercancía',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
@@ -69,20 +98,17 @@ export default function GlosarioPage() {
       ),
       content: (
         <div className="space-y-4 text-sm text-gray-600 font-satoshi-regular leading-relaxed">
-          <p>¿Necesitas mover productos de una bodega a una tienda? Hazlo desde <em>Traslados de Stock</em>. El sistema lo hace en dos pasos muy seguros:</p>
+          <p>Permite mover mercancía de tus bodegas principales a tus tiendas POS o a la Bodega Droko:</p>
           <ol className="list-decimal pl-5 space-y-2">
-            <li><strong className="text-gray-900 font-satoshi-black">Paso 1 (El Envío):</strong> Dices qué productos vas a mandar, con qué transportadora y el número de guía. En ese momento, el sistema le <strong>resta</strong> los productos a la bodega que los envía. El estado quedará <em>"EN TRÁNSITO"</em>.</li>
-            <li><strong className="text-gray-900 font-satoshi-black">Paso 2 (La Recepción):</strong> Cuando la caja física llega a la otra tienda, el vendedor encargado hace clic en <em>"Marcar como Recibido"</em>. Solo hasta ese momento, los productos se <strong>suman</strong> al inventario de la tienda destino.</li>
+            <li><strong className="text-gray-900 font-satoshi-black">Paso 1 (Envío):</strong> Indicas el Origen, Destino, Transportadora y Guía. El stock se descuenta del Origen y el estado pasa a <em>"EN TRÁNSITO"</em>.</li>
+            <li><strong className="text-gray-900 font-satoshi-black">Paso 2 (Recepción):</strong> Cuando la mercancía llega físicamente, se hace clic en <em>"Marcar como Recibido"</em> para sumar las unidades al Destino.</li>
           </ol>
-          <p className="mt-2 text-xs bg-gray-100 p-3 border border-gray-200 rounded-xl text-gray-600">
-            <strong className="text-gray-900">Nota:</strong> Si alguien se equivoca, únicamente el Administrador tiene permiso para "Anular" un traslado. Al hacerlo, el inventario regresa mágicamente a la bodega original, pero el sistema exigirá escribir un porqué para dejar constancia.
-          </p>
         </div>
       )
     },
     {
-      id: 'ventas-pos',
-      title: '4. Registro de Ventas (Caja)',
+      id: 'ventas-pos-facturacion',
+      title: '5. Registro de Ventas (Caja POS) y Control Contable',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 00-4zm-8 2a2 2 0 100 4 2 2 0 00-4z" />
@@ -90,30 +116,10 @@ export default function GlosarioPage() {
       ),
       content: (
         <div className="space-y-4 text-sm text-gray-600 font-satoshi-regular leading-relaxed">
-          <p>Esta es tu caja registradora virtual. Aquí es donde atiendes a los clientes que te compran en el mostrador o por chat.</p>
+          <p>Operación diaria de ventas presenciales e historial consolidado:</p>
           <ul className="list-disc pl-5 space-y-2">
-            <li><strong>Stock Inteligente:</strong> Si intentas vender algo que ya no te queda en la tienda, el sistema te bloqueará para evitar que vendas "aire".</li>
-            <li><strong>Descuentos Controlados:</strong> Si le quieres dar un descuento a un cliente, el sistema te obligará a escribir el motivo (ej: "Descuento por cliente frecuente"). Así el dueño siempre sabrá por qué se cobró menos.</li>
-            <li><strong>Entrega de Recibo:</strong> Al terminar de cobrar, puedes imprimir el Documento de Venta en una impresora térmica, o mejor aún, enviárselo directamente al WhatsApp del cliente con un solo clic.</li>
-          </ul>
-        </div>
-      )
-    },
-    {
-      id: 'facturacion-exportacion',
-      title: '5. Facturación y Exportación Contable',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 01-2-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      ),
-      content: (
-        <div className="space-y-4 text-sm text-gray-600 font-satoshi-regular leading-relaxed">
-          <p>En el módulo de <em>Facturación</em> encontrarás un historial organizado, seguro e inalterable de todas las ventas que se han realizado en tu negocio, ya sea en las tiendas o desde las bodegas principales.</p>
-          <ul className="list-disc pl-5 space-y-2">
-            <li><strong className="text-gray-900 font-satoshi-black">Monitoreo:</strong> Puedes revisar fácilmente qué se vendió, a quién se le vendió, qué día y si el documento fue <em>Emitido</em> o <em>Anulado</em>.</li>
-            <li><strong className="text-gray-900 font-satoshi-black">Reimpresión:</strong> ¿Un cliente perdió su recibo? Aquí puedes buscar la factura por nombre o cédula y volver a visualizarla o imprimirla.</li>
-            <li><strong className="text-gray-900 font-satoshi-black">Reporte para la DIAN:</strong> A fin de mes, ya no tienes que hacer cuentas a mano. Simplemente filtra el mes que deseas y dale clic al botón amarillo <em>Exportar Consolidado Contable</em>. El sistema descargará un archivo de Excel (CSV) perfecto, con los impuestos discriminados y los datos de los clientes listos para entregárselos a tu contador.</li>
+            <li><strong className="text-gray-900 font-satoshi-black">Caja POS:</strong> Cobra a clientes presenciales, aplica descuentos auditables con justificación obligatoria e imprime recibos o envíalos por WhatsApp.</li>
+            <li><strong className="text-gray-900 font-satoshi-black">Pre-Facturación:</strong> Consulta el historial inalterable de todas las ventas de la empresa y descarga el reporte consolidado listo para enviar al contador y cumplir con los requerimientos de la DIAN.</li>
           </ul>
         </div>
       )
@@ -123,7 +129,6 @@ export default function GlosarioPage() {
   // FILTRADO DEL GLOSARIO
   const sectionsFiltradas = manualSections.filter(sec => 
     sec.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    sec.content.props.children.toString().toLowerCase().includes(searchQuery.toLowerCase()) ||
     sec.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -140,7 +145,7 @@ export default function GlosarioPage() {
             </span>
           </div>
           <h1 className="text-3xl font-black text-gray-900 tracking-tight font-satoshi-black">
-            MANUAL DE USUARIO
+            MANUAL DE USUARIO Y GLOSARIO
           </h1>
           <p className="text-xs text-gray-500 mt-1 font-satoshi-regular max-w-xl">
             Aprende a usar la plataforma, entiende los conceptos básicos y sácale el máximo provecho a tu sistema.
@@ -157,7 +162,7 @@ export default function GlosarioPage() {
           <input 
             type="text" 
             className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl pl-10 pr-4 py-3 text-xs text-gray-900 placeholder-gray-400 focus:outline-none transition-all font-satoshi-regular"
-            placeholder="Escribe un tema o concepto que desees buscar (ej: IVA, Traslados, POS)..."
+            placeholder="Escribe un tema o concepto que desees buscar (ej: Droko, TRM, IVA, Traslados)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
