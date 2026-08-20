@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { collection, query, where, onSnapshot, doc, setDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import '@/app/globals.css';
 
 export default function VentasPage() {
   const [userAuth, setUserAuth] = useState<any>(null);
@@ -62,7 +63,7 @@ export default function VentasPage() {
     }
   }, []);
 
-  // Escuchar Firestore (⚠️ Deuda técnica futura: Paginar ventas para escalar a +10k registros)
+  // Escuchar Firestore
   useEffect(() => {
     if (!userAuth || !userAuth.id_cuenta) return;
 
@@ -119,7 +120,7 @@ export default function VentasPage() {
     };
   }, [userAuth]);
 
-  // SINCRONIZACIÓN AUTOMÁTICA E INMEDIATA DE LA SEDE ACTIVA
+  // SINCRONIZACIÓN AUTOMÁTICA DE LA SEDE ACTIVA
   useEffect(() => {
     if (sucursales.length > 0 && !sedeDespacho) {
       const sucsActivas = sucursales.filter(s => s.estado !== 'INACTIVA');
@@ -152,7 +153,7 @@ export default function VentasPage() {
     const cantidadEnCarrito = itemActual ? itemActual.cantidad : 0;
 
     if (cantidadEnCarrito + 1 > stockDisponible) {
-      return alert(`⚠️ Stock Insuficiente: El producto "${prod.nombre}" solo cuenta con ${stockDisponible} unidades disponibles en esta sede.`);
+      return alert(`Stock Insuficiente: El producto "${prod.nombre}" solo cuenta con ${stockDisponible} unidades disponibles en esta sede.`);
     }
 
     setCart(prev => {
@@ -175,7 +176,7 @@ export default function VentasPage() {
     });
   };
 
-  // ACTUALIZAR CANTIDAD CON BOTONES + Y - CON VALIDACIÓN DE STOCK
+  // ACTUALIZAR CANTIDAD CON BOTONES + Y -
   const updateQuantity = (sku: string, delta: number) => {
     const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
     const prodObj = productos.find(p => p.sku === sku);
@@ -187,7 +188,7 @@ export default function VentasPage() {
           const nuevaCant = item.cantidad + delta;
 
           if (delta > 0 && nuevaCant > stockDisponible) {
-            alert(`⚠️ Stock Insuficiente: Solo hay ${stockDisponible} unidades disponibles de este producto.`);
+            alert(`Stock Insuficiente: Solo hay ${stockDisponible} unidades disponibles de este producto.`);
             return item;
           }
 
@@ -198,14 +199,14 @@ export default function VentasPage() {
     });
   };
 
-  // CAMBIO MANUAL DE CANTIDAD CON TECLADO Y VALIDACIÓN DE STOCK
+  // CAMBIO MANUAL DE CANTIDAD CON TECLADO
   const handleQuantityManualChange = (sku: string, value: number) => {
     const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
     const prodObj = productos.find(p => p.sku === sku);
     const stockDisponible = Number(prodObj?.stock?.[sedeEfectiva] || 0);
 
     if (value > stockDisponible) {
-      alert(`⚠️ Stock Insuficiente: No puedes solicitar ${value} unidades. El stock máximo disponible es de ${stockDisponible} unidades.`);
+      alert(`Stock Insuficiente: No puedes solicitar ${value} unidades. El stock máximo disponible es de ${stockDisponible} unidades.`);
       value = stockDisponible;
     }
 
@@ -218,7 +219,7 @@ export default function VentasPage() {
   };
 
   // =========================================================================
-  // 🧠 CÁLCULOS OPTIMIZADOS (useMemo para evitar lag al escribir en buscadores)
+  // 🧠 CÁLCULOS OPTIMIZADOS CON USEMEMO
   // =========================================================================
   const { 
     subtotalBrutoCarrito, 
@@ -282,32 +283,30 @@ export default function VentasPage() {
     };
   }, [cart, montoDescuento, tipoDescuento, ivaIncluido, metodoPago, montoPagaCon]);
 
-  // FILTRADO DINÁMICO DE CLIENTES POR BUSCADOR
+  // FILTRADO DINÁMICO DE CLIENTES
   const clientesFiltradosPOS = clientes.filter(c => 
     String(c.nombre || '').toLowerCase().includes(clienteSearch.toLowerCase()) ||
     String(c.nit || c.id_cliente || '').toLowerCase().includes(clienteSearch.toLowerCase())
   );
 
   // =========================================================================
-  // 🛡️ PROCESAR COBRO POS (CON WRITEBATCH PARA ATOMICIDAD Y ESCALAMIENTO)
+  // 🛡️ PROCESAR COBRO POS
   // =========================================================================
   const handleCobrarVenta = async () => {
     const sedeEfectiva = sedeDespacho || (sucursales[0]?.id_sucursal || '');
     if (cart.length === 0) return alert('El carrito está vacío. Selecciona al menos un producto.');
     if (!sedeEfectiva) return alert('Por favor selecciona la sede de despacho.');
     
-    // VALIDACIÓN OBLIGATORIA: DEBE ELEGIR UN CLIENTE O CONSUMIDOR FINAL
     if (!clienteSelObj) {
-      return alert('⚠️ Por favor selecciona un cliente (o elige Consumidor Final) para continuar con la venta.');
+      return alert('Por favor selecciona un cliente (o elige Consumidor Final) para continuar con la venta.');
     }
 
-    // VERIFICACIÓN INTEGRAL DE STOCK ANTES DEL REGISTRO FINAL
     for (const item of cart) {
       const prodObj = productos.find(p => p.sku === item.sku);
       const stockDisponible = Number(prodObj?.stock?.[sedeEfectiva] || 0);
 
       if (item.cantidad > stockDisponible) {
-        return alert(`🚫 Venta Bloqueada: El producto "${item.nombre}" supera el inventario real (${stockDisponible} disponibles). Ajusta la cantidad antes de continuar.`);
+        return alert(`Venta Bloqueada: El producto "${item.nombre}" supera el inventario real (${stockDisponible} disponibles). Ajusta la cantidad antes de continuar.`);
       }
     }
 
@@ -356,13 +355,11 @@ export default function VentasPage() {
         estado: 'PAGADA'
       };
 
-      // IMPLEMENTACIÓN BATCH: Protege contra desincronización y reduce peticiones a DB
       const batch = writeBatch(db);
       
       const ventaRef = doc(db, 'ventas', idFactura);
       batch.set(ventaRef, ventaData, { merge: true });
 
-      // Descontar Stock dentro de la misma transacción
       for (const item of cart) {
         const prodRef = doc(db, 'productos', item.sku);
         const prodObj = productos.find(p => p.sku === item.sku);
@@ -380,7 +377,7 @@ export default function VentasPage() {
         }
       }
 
-      await batch.commit(); // Ejecuta todo al mismo tiempo
+      await batch.commit();
 
       setCart([]);
       setMontoPagaCon(0);
@@ -398,29 +395,29 @@ export default function VentasPage() {
     }
   };
 
-  // ENVÍO DEL COMPROBANTE POR WHATSAPP
+  // ENVÍO DEL COMPROBANTE POR WHATSAPP (TEXTO PLANO SIN EMOJIS)
   const handleEnviarWhatsAppTicket = (ticket: any) => {
     if (!ticket) return;
 
     const rawTel = ticket.cliente_telefono ? String(ticket.cliente_telefono).replace(/\D/g, '') : '';
     const numFinal = rawTel.length === 10 ? `57${rawTel}` : rawTel;
 
-    let mensaje = `🧾 *COMPROBANTE FISCAL DE VENTA*\n`;
+    let mensaje = `COMPROBANTE FISCAL DE VENTA\n`;
     mensaje += `*N° Factura:* ${ticket.id_factura}\n`;
     mensaje += `*Sede:* ${ticket.nombre_bodega || 'Sede Principal'}\n`;
     mensaje += `*Fecha:* ${new Date(ticket.fecha_cobro || ticket.fecha).toLocaleString()}\n\n`;
-    mensaje += `👤 *Cliente:* ${ticket.cliente_nombre}\n`;
-    mensaje += `💳 *Método de Pago:* ${ticket.metodo_pago}\n\n`;
-    mensaje += `🛒 *Detalle de Productos:*\n`;
+    mensaje += `*Cliente:* ${ticket.cliente_nombre}\n`;
+    mensaje += `*Método de Pago:* ${ticket.metodo_pago}\n\n`;
+    mensaje += `*Detalle de Productos:*\n`;
 
     if (Array.isArray(ticket.items)) {
       ticket.items.forEach((it: any) => {
-        mensaje += `• ${it.nombre} (${it.cantidad}x) - ${formatoCOP(it.precio * it.cantidad)}\n`;
+        mensaje += `- ${it.nombre} (${it.cantidad}x) - ${formatoCOP(it.precio * it.cantidad)}\n`;
       });
     }
 
     mensaje += `\n*TOTAL PAGADO:* ${formatoCOP(ticket.total)}\n\n`;
-    mensaje += `¡Gracias por tu compra! 🙌`;
+    mensaje += `Gracias por tu compra.`;
 
     const url = numFinal 
       ? `https://api.whatsapp.com/send?phone=${numFinal}&text=${encodeURIComponent(mensaje)}`
@@ -430,7 +427,7 @@ export default function VentasPage() {
   };
 
   // =========================================================================
-  // 🛡️ MODAL ANULAR (RESTABLECER INVENTARIO EN BATCH)
+  // 🛡️ MODAL ANULAR
   // =========================================================================
   const handleOpenAnular = (v: any) => {
     setVentaAAnular(v);
@@ -454,7 +451,7 @@ export default function VentasPage() {
         estado: 'ANULADA',
         motivo_anulacion: motivoAnulacion.trim(),
         fecha_anulacion: new Date().toISOString(),
-        usuario_anulo_nombre: userAuth?.nombre || 'Usuario ATOM',
+        usuario_anulo_nombre: userAuth?.nombre || 'Usuario LOBO',
         usuario_anulo_id: userAuth?.id_usuario || ''
       };
 
@@ -462,7 +459,6 @@ export default function VentasPage() {
       const ventaRef = doc(db, 'ventas', docId);
       batch.set(ventaRef, updateData, { merge: true });
 
-      // Devolver stock en bloque
       if (Array.isArray(ventaAAnular.items)) {
         for (const item of ventaAAnular.items) {
           if (item.sku) {
@@ -487,7 +483,7 @@ export default function VentasPage() {
 
       await batch.commit();
 
-      alert(`¡Venta N° ${ventaAAnular.id_factura} ANULADA y stock restablecido!`);
+      alert(`Venta N° ${ventaAAnular.id_factura} ANULADA y stock restablecido.`);
       setShowModalAnular(false);
       setVentaAAnular(null);
     } catch (err: any) {
@@ -513,11 +509,9 @@ export default function VentasPage() {
            String(v.nombre_bodega || '').toLowerCase().includes(q);
   });
 
-  // DETERMINAR LA SEDE ACTIVA GARANTIZADA
   const sucsActivas = sucursales.filter(s => s.estado !== 'INACTIVA');
   const sedeGarantizada = sedeDespacho || (sucsActivas.length > 0 ? sucsActivas[0].id_sucursal : '');
 
-  // FILTRADO DINÁMICO DE PRODUCTOS SEGÚN LA SEDE ACTIVA (> 0 UNIDADES)
   const productosPOS = productos.filter(p => {
     const q = searchProd.toLowerCase().trim();
     const matchSearch = String(p.nombre || '').toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q);
@@ -529,40 +523,46 @@ export default function VentasPage() {
   const sedeActivaObj = sucursales.find(s => s.id_sucursal === sedeGarantizada);
 
   return (
-    <div className="min-h-screen bg-[#1D2935] text-slate-100 p-4 md:p-8 font-sans relative pb-20">
+    <div className="min-h-screen bg-[#F4F5F7] text-gray-800 p-4 md:p-8 font-sans relative pb-20">
       
-      {/* CABECERA SUPERIOR */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-700/60 pb-4">
+      {/* CABECERA PRINCIPAL */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-gray-200 pb-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight font-satoshi-black">
-            Registro de Ventas
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#FFD800] border border-gray-800 animate-pulse"></span>
+            <span className="text-[11px] font-satoshi-black text-gray-900 uppercase tracking-wider font-bold">
+              Control Comercial 
+            </span>
+          </div>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight font-satoshi-black">
+            REGISTRO DE VENTAS
           </h1>
-          <p className="text-xs text-[#A0AEC0] mt-0.5 font-satoshi-regular">
+          <p className="text-xs text-gray-500 mt-0.5 font-satoshi-regular">
             {esVendedor 
               ? `Cajero Activo: ${userAuth?.nombre || 'Mi Caja'} | Sede: ${sedeActivaObj ? (sedeActivaObj.nombre || sedeActivaObj.NOMBRE) : 'Mi Sede'}`
               : 'Cobro rápido en mostrador, descuentos auditables y facturación en tiempo real.'}
           </p>
         </div>
 
-        <div className="bg-[#253443] p-1 rounded-xl flex items-center gap-1 border border-slate-700/60 shrink-0">
+        <div className="bg-white p-1 rounded-xl flex items-center gap-1 border border-gray-200 shrink-0 shadow-sm">
           <button
             type="button"
             onClick={() => setActiveTab('POS')}
             className={`px-4 py-2 rounded-lg text-xs font-satoshi-black transition flex items-center gap-2 ${
-              activeTab === 'POS' ? 'bg-[#0DE8C0] text-[#1D2935] shadow-md' : 'text-[#A0AEC0] hover:text-white'
+              activeTab === 'POS' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm' : 'text-gray-500 hover:text-gray-900'
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 00-2 2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 00-4zm-8 2a2 2 0 100 4 2 2 0 00-4z" />
             </svg>
-            <span>Caja Registrar (POS)</span>
+            <span>Caja Registradora (POS)</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('HISTORIAL')}
             className={`px-4 py-2 rounded-lg text-xs font-satoshi-black transition flex items-center gap-2 ${
-              activeTab === 'HISTORIAL' ? 'bg-[#0DE8C0] text-[#1D2935] shadow-md' : 'text-[#A0AEC0] hover:text-white'
+              activeTab === 'HISTORIAL' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm' : 'text-gray-500 hover:text-gray-900'
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -580,14 +580,14 @@ export default function VentasPage() {
           {/* SECCIÓN IZQUIERDA: CATÁLOGO */}
           <div className="lg:col-span-7 space-y-4">
             
-            <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-3 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="relative flex-1 w-full">
-                <svg className="w-5 h-5 text-[#0DE8C0] absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input 
                   type="text" 
-                  className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl pl-11 pr-4 py-2.5 text-xs text-white placeholder-[#A0AEC0] focus:outline-none transition"
+                  className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none transition-all font-satoshi-regular"
                   placeholder="Escribe el nombre o escanea el código SKU..."
                   value={searchProd}
                   onChange={(e) => setSearchQueryProd(e.target.value)}
@@ -597,12 +597,12 @@ export default function VentasPage() {
 
               {/* CONTROLES: CONMUTADOR VISTA TARJETAS / TABLA + IVA */}
               <div className="flex items-center gap-2">
-                <div className="bg-[#1D2935] p-1 rounded-xl flex items-center gap-1 border border-slate-700 shrink-0">
+                <div className="bg-gray-100 p-1 rounded-xl flex items-center gap-1 border border-gray-200 shrink-0">
                   <button
                     type="button"
                     onClick={() => setViewModeProd('TARJETAS')}
                     className={`p-1.5 rounded-lg text-xs font-satoshi-black transition ${
-                      viewModeProd === 'TARJETAS' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'text-[#A0AEC0] hover:text-white'
+                      viewModeProd === 'TARJETAS' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm' : 'text-gray-500 hover:text-gray-900'
                     }`}
                     title="Vista Tarjetas"
                   >
@@ -614,7 +614,7 @@ export default function VentasPage() {
                     type="button"
                     onClick={() => setViewModeProd('TABLA')}
                     className={`p-1.5 rounded-lg text-xs font-satoshi-black transition ${
-                      viewModeProd === 'TABLA' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'text-[#A0AEC0] hover:text-white'
+                      viewModeProd === 'TABLA' ? 'bg-[#FFD800] text-[#222222] font-bold shadow-sm' : 'text-gray-500 hover:text-gray-900'
                     }`}
                     title="Vista Tabla"
                   >
@@ -624,15 +624,15 @@ export default function VentasPage() {
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 bg-[#1D2935] px-3.5 py-2 rounded-xl border border-slate-700/80 shrink-0 select-none">
+                <div className="flex items-center gap-2 bg-gray-50 px-3.5 py-2 rounded-xl border border-gray-300 shrink-0 select-none">
                   <input
                     type="checkbox"
                     id="ivaCheck"
                     checked={ivaIncluido}
                     onChange={(e) => setIvaIncluido(e.target.checked)}
-                    className="rounded bg-[#253443] border-slate-700 text-[#0DE8C0] focus:ring-0 w-4 h-4 cursor-pointer"
+                    className="rounded bg-white border-gray-300 text-[#222222] focus:ring-0 w-4 h-4 cursor-pointer accent-[#222222]"
                   />
-                  <label htmlFor="ivaCheck" className="text-xs font-satoshi-black text-slate-200 cursor-pointer">
+                  <label htmlFor="ivaCheck" className="text-xs font-satoshi-black text-gray-800 cursor-pointer font-bold">
                     IVA Incluido
                   </label>
                 </div>
@@ -650,35 +650,35 @@ export default function VentasPage() {
                     <div
                       key={prod.sku || idx}
                       onClick={() => addToCart(prod)}
-                      className="bg-[#253443] border border-slate-700/60 hover:border-[#0DE8C0] rounded-xl p-3 shadow-md flex flex-col justify-between transition-all duration-200 cursor-pointer active:scale-95 group"
+                      className="bg-white border border-gray-200 hover:border-[#FFD800] rounded-xl p-3 shadow-xs flex flex-col justify-between transition-all duration-200 cursor-pointer active:scale-95 group"
                     >
                       <div>
-                        <div className="w-full h-24 rounded-lg bg-[#1D2935] border border-slate-700/80 mb-2 overflow-hidden flex items-center justify-center shrink-0">
+                        <div className="w-full h-24 rounded-lg bg-gray-50 border border-gray-200 mb-2 overflow-hidden flex items-center justify-center shrink-0">
                           {prod.imagen_url ? (
                             <img src={prod.imagen_url} alt={prod.nombre} className="w-full h-full object-cover group-hover:scale-105 transition" />
                           ) : (
-                            <svg className="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                             </svg>
                           )}
                         </div>
 
-                        <h4 className="font-satoshi-black text-xs text-white uppercase truncate line-clamp-1">
+                        <h4 className="font-satoshi-black text-xs text-gray-900 uppercase truncate font-bold">
                           {prod.nombre}
                         </h4>
-                        <p className="font-mono text-[10px] text-[#A0AEC0]">SKU: {prod.sku}</p>
+                        <p className="font-mono text-[10px] text-gray-500">SKU: {prod.sku}</p>
                       </div>
 
-                      <div className="mt-3 pt-2 border-t border-slate-700/60 flex items-center justify-between">
+                      <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between">
                         <div>
-                          <span className="font-satoshi-black text-sm text-[#0DE8C0] block">
+                          <span className="font-satoshi-black text-sm text-gray-900 block font-bold">
                             {formatoCOP(prod.plocal || prod.precio || 0)}
                           </span>
-                          <span className="text-[9px] text-[#A0AEC0] block font-mono">
+                          <span className="text-[9px] text-gray-500 block font-mono">
                             IVA: {tarifaIvaProd}%
                           </span>
                         </div>
-                        <span className="text-[9px] font-satoshi-black px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                        <span className="text-[9px] font-satoshi-black px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-bold border border-gray-200">
                           Stk: {stockSede}
                         </span>
                       </div>
@@ -687,7 +687,7 @@ export default function VentasPage() {
                 })}
 
                 {productosPOS.length === 0 && (
-                  <div className="col-span-full text-center py-12 bg-[#253443] rounded-2xl border border-slate-700/60 p-6 text-[#A0AEC0] text-xs font-satoshi-regular">
+                  <div className="col-span-full text-center py-12 bg-white rounded-2xl border border-gray-200 p-6 text-gray-500 text-xs font-satoshi-regular">
                     No hay productos disponibles con stock en la sede seleccionada.
                   </div>
                 )}
@@ -696,10 +696,10 @@ export default function VentasPage() {
 
             {/* VISTA 2: TABLA DE PRODUCTOS */}
             {viewModeProd === 'TABLA' && (
-              <div className="bg-[#253443] border border-slate-700/60 rounded-2xl shadow-lg max-h-[calc(100vh-280px)] overflow-y-auto">
+              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm max-h-[calc(100vh-280px)] overflow-y-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-[#1D2935] text-[11px] font-satoshi-black text-[#A0AEC0] uppercase border-b border-slate-700">
+                    <tr className="bg-gray-50 text-[11px] font-satoshi-black text-gray-600 uppercase border-b border-gray-200">
                       <th className="p-3">Producto</th>
                       <th className="p-3 text-center">SKU</th>
                       <th className="p-3 text-center">Stock Sede</th>
@@ -707,21 +707,21 @@ export default function VentasPage() {
                       <th className="p-3 text-center">Acción</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-700/60 font-satoshi-regular">
+                  <tbody className="divide-y divide-gray-100 font-satoshi-regular text-gray-800">
                     {productosPOS.map((prod, idx) => {
                       const stockSede = Number(prod.stock?.[sedeGarantizada] || 0);
 
                       return (
-                        <tr key={prod.sku || idx} className="hover:bg-[#1D2935]/80 transition">
-                          <td className="p-3 font-satoshi-black text-white">{prod.nombre}</td>
-                          <td className="p-3 text-center font-mono text-[#A0AEC0]">{prod.sku}</td>
-                          <td className="p-3 text-center font-mono font-bold text-slate-200">{stockSede} unds</td>
-                          <td className="p-3 text-right font-satoshi-black text-[#0DE8C0]">{formatoCOP(prod.plocal || prod.precio || 0)}</td>
+                        <tr key={prod.sku || idx} className="hover:bg-gray-50/50 transition">
+                          <td className="p-3 font-satoshi-black text-gray-900 font-bold">{prod.nombre}</td>
+                          <td className="p-3 text-center font-mono text-gray-500">{prod.sku}</td>
+                          <td className="p-3 text-center font-mono font-bold text-gray-900">{stockSede} unds</td>
+                          <td className="p-3 text-right font-satoshi-black text-gray-900 font-bold">{formatoCOP(prod.plocal || prod.precio || 0)}</td>
                           <td className="p-3 text-center">
                             <button
                               type="button"
                               onClick={() => addToCart(prod)}
-                              className="bg-[#0DE8C0] text-[#1D2935] font-satoshi-black px-2.5 py-1 rounded-lg text-xs hover:bg-[#0bcfa8]"
+                              className="bg-[#FFD800] hover:bg-[#FDCB13] text-[#222222] font-satoshi-black px-2.5 py-1 rounded-lg text-xs font-bold shadow-xs"
                             >
                               + Agregar
                             </button>
@@ -732,7 +732,7 @@ export default function VentasPage() {
 
                     {productosPOS.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="p-8 text-center text-[#A0AEC0]">No hay productos con stock en esta sede.</td>
+                        <td colSpan={5} className="p-8 text-center text-gray-500">No hay productos con stock en esta sede.</td>
                       </tr>
                     )}
                   </tbody>
@@ -745,31 +745,31 @@ export default function VentasPage() {
           {/* SECCIÓN DERECHA: COBRO Y DESCUENTOS AUDITABLES */}
           <div className="lg:col-span-5 space-y-4">
             
-            <div className="bg-[#253443] border-2 border-[#0DE8C0]/50 rounded-2xl p-3.5 shadow-lg flex items-center justify-between gap-3">
+            <div className="bg-white border border-gray-200 rounded-2xl p-3.5 shadow-sm flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg bg-[#0DE8C0]/10 flex items-center justify-center text-[#0DE8C0] shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-[#222222] text-[#FFD800] flex items-center justify-center shrink-0">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
                 <div className="truncate">
-                  <span className="text-[10px] font-satoshi-black text-[#A0AEC0] uppercase block">
+                  <span className="text-[10px] font-satoshi-black text-gray-500 uppercase block font-bold">
                     {esVendedor ? 'Sede Asignada (Bloqueado)' : 'Sede Activa de Caja'}
                   </span>
-                  <span className="text-xs font-satoshi-black text-white truncate block">
+                  <span className="text-xs font-satoshi-black text-gray-900 truncate block font-bold">
                     {sedeActivaObj ? (sedeActivaObj.nombre || sedeActivaObj.NOMBRE) : 'Seleccionar Sede'}
                   </span>
                 </div>
               </div>
 
               <select
-                className="bg-[#1D2935] border border-slate-700 text-xs font-satoshi-black text-[#0DE8C0] rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer shrink-0 disabled:opacity-60"
+                className="bg-gray-50 border border-gray-300 text-xs font-satoshi-black text-gray-900 rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer shrink-0 disabled:opacity-60 transition-all"
                 value={sedeGarantizada}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSedeDespacho(e.target.value)}
                 disabled={esVendedor}
               >
                 {sucsActivas.map((s, idx) => (
-                  <option key={s.id_sucursal || idx} value={s.id_sucursal} className="bg-[#1D2935] text-white">
+                  <option key={s.id_sucursal || idx} value={s.id_sucursal} className="bg-white text-gray-900">
                     {s.nombre || s.NOMBRE}
                   </option>
                 ))}
@@ -777,74 +777,73 @@ export default function VentasPage() {
             </div>
 
             {/* PANEL DE CARRITO Y EDICIÓN MANUAL */}
-            <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[480px]">
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between min-h-[480px]">
               <div className="space-y-3">
-                <div className="flex justify-between items-center border-b border-slate-700/60 pb-2">
-                  <h3 className="text-xs font-satoshi-black text-white uppercase tracking-wider">
+                <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                  <h3 className="text-xs font-satoshi-black text-gray-900 uppercase tracking-wider font-bold">
                     Carrito de Compra ({cart.reduce((a, c) => a + c.cantidad, 0)})
                   </h3>
                   {cart.length > 0 && (
-                    <button type="button" onClick={() => setCart([])} className="text-[11px] text-red-400 hover:underline">
+                    <button type="button" onClick={() => setCart([])} className="text-[11px] text-red-600 hover:underline font-bold">
                       Vaciar
                     </button>
                   )}
                 </div>
 
-                {/* CANTIDAD MANUAL + BOTONES + Y - CON CLASES CSS PARA OCULTAR FLECHAS NATIVAS */}
+                {/* CANTIDAD MANUAL + BOTONES + Y - */}
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
                   {cart.map((item) => (
-                    <div key={item.sku} className="bg-[#1D2935] rounded-xl p-2.5 border border-slate-700/60 flex items-center justify-between gap-2">
+                    <div key={item.sku} className="bg-gray-50 rounded-xl p-2.5 border border-gray-200 flex items-center justify-between gap-2">
                       <div className="truncate flex-1">
-                        <div className="text-xs font-satoshi-black text-white truncate">{item.nombre}</div>
-                        <div className="text-[10px] text-[#A0AEC0]">
+                        <div className="text-xs font-satoshi-black text-gray-900 truncate font-bold">{item.nombre}</div>
+                        <div className="text-[10px] text-gray-500">
                           {formatoCOP(item.precio)} c/u (IVA {item.tarifaIva}%)
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button type="button" onClick={() => updateQuantity(item.sku, -1)} className="w-6 h-6 bg-[#253443] text-white rounded-lg font-satoshi-black text-xs hover:bg-slate-700">-</button>
+                        <button type="button" onClick={() => updateQuantity(item.sku, -1)} className="w-6 h-6 bg-gray-200 text-gray-800 rounded-lg font-satoshi-black text-xs hover:bg-gray-300 font-bold">-</button>
                         
-                        {/* INPUT NUMÉRICO SIN FLECHAS NATIVAS DE NAVEGADOR */}
                         <input
                           type="number"
                           min="1"
                           value={item.cantidad}
                           onChange={(e) => handleQuantityManualChange(item.sku, Number(e.target.value))}
-                          className="w-12 bg-[#253443] border border-slate-700 rounded-lg text-center font-satoshi-black text-xs text-[#0DE8C0] py-0.5 focus:outline-none focus:border-[#0DE8C0] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-12 bg-white border border-gray-300 rounded-lg text-center font-satoshi-black text-xs text-gray-900 font-bold py-0.5 focus:outline-none focus:border-[#FFD800] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
 
-                        <button type="button" onClick={() => updateQuantity(item.sku, 1)} className="w-6 h-6 bg-[#253443] text-white rounded-lg font-satoshi-black text-xs hover:bg-slate-700">+</button>
-                        <button type="button" onClick={() => removeFromCart(item.sku)} className="ml-1 text-slate-500 hover:text-red-400 text-xs">✕</button>
+                        <button type="button" onClick={() => updateQuantity(item.sku, 1)} className="w-6 h-6 bg-gray-200 text-gray-800 rounded-lg font-satoshi-black text-xs hover:bg-gray-300 font-bold">+</button>
+                        <button type="button" onClick={() => removeFromCart(item.sku)} className="ml-1 text-gray-400 hover:text-red-600 text-xs font-bold">✕</button>
                       </div>
                     </div>
                   ))}
                   {cart.length === 0 && (
-                    <div className="text-center py-8 text-[#A0AEC0] text-xs">Haz clic en los productos para agregarlos al cobro.</div>
+                    <div className="text-center py-8 text-gray-400 text-xs">Haz clic en los productos para agregarlos al cobro.</div>
                   )}
                 </div>
               </div>
 
               {/* MÓDULO DE DESCUENTOS Y BUSCADOR INTELIGENTE DE CLIENTES */}
-              <div className="space-y-3 pt-3 border-t border-slate-700/60">
+              <div className="space-y-3 pt-3 border-t border-gray-100">
                 
                 {/* APLICACIÓN DE DESCUENTO */}
-                <div className="bg-[#1D2935] p-3 rounded-xl border border-slate-700 space-y-2">
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-2">
                   <div className="flex justify-between items-center">
-                    <label className="text-[11px] font-satoshi-black text-[#0DE8C0] uppercase">
+                    <label className="text-[11px] font-satoshi-black text-gray-900 uppercase font-bold">
                       Descuento Auditable
                     </label>
                     <div className="flex gap-1 text-[10px] font-satoshi-black">
                       <button
                         type="button"
                         onClick={() => setTipoDescuento('FIJO')}
-                        className={`px-2 py-0.5 rounded ${tipoDescuento === 'FIJO' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'bg-[#253443] text-slate-400'}`}
+                        className={`px-2 py-0.5 rounded font-bold ${tipoDescuento === 'FIJO' ? 'bg-[#FFD800] text-[#222222]' : 'bg-gray-200 text-gray-600'}`}
                       >
                         Fijo ($)
                       </button>
                       <button
                         type="button"
                         onClick={() => setTipoDescuento('PORCENTAJE')}
-                        className={`px-2 py-0.5 rounded ${tipoDescuento === 'PORCENTAJE' ? 'bg-[#0DE8C0] text-[#1D2935]' : 'bg-[#253443] text-slate-400'}`}
+                        className={`px-2 py-0.5 rounded font-bold ${tipoDescuento === 'PORCENTAJE' ? 'bg-[#FFD800] text-[#222222]' : 'bg-gray-200 text-gray-600'}`}
                       >
                         Porcentaje (%)
                       </button>
@@ -856,31 +855,31 @@ export default function VentasPage() {
                       type="number"
                       min="0"
                       placeholder={tipoDescuento === 'PORCENTAJE' ? 'Ej: 10 %' : 'Ej: 5000 $'}
-                      className="bg-[#253443] border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="bg-white border border-gray-300 rounded-lg p-2 text-xs text-gray-900 focus:outline-none focus:border-[#FFD800] font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       value={montoDescuento}
                       onChange={(e) => setMontoDescuento(e.target.value ? Number(e.target.value) : '')}
                     />
                     <input
                       type="text"
                       placeholder="Motivo (Obligatorio)..."
-                      className="bg-[#253443] border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none"
+                      className="bg-white border border-gray-300 rounded-lg p-2 text-xs text-gray-900 focus:outline-none focus:border-[#FFD800]"
                       value={motivoDescuento}
                       onChange={(e) => setMotivoDescuento(e.target.value)}
                     />
                   </div>
                 </div>
 
-                {/* BUSCADOR DE CLIENTES SIN VALOR PREDETERMINADO OBLIGATORIO */}
+                {/* BUSCADOR DE CLIENTES */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative" ref={clienteRef}>
-                    <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">
+                    <label className="block text-[10px] font-satoshi-black text-gray-600 uppercase mb-1 font-bold">
                       Buscar Cliente *
                     </label>
                     <input
                       type="text"
                       placeholder="-- Seleccionar Cliente --"
-                      className={`w-full bg-[#1D2935] border text-xs text-white rounded-xl p-2 focus:outline-none font-satoshi-black ${
-                        clienteSelObj ? 'border-[#0DE8C0]' : 'border-slate-700 focus:border-[#0DE8C0]'
+                      className={`w-full bg-gray-50 border text-xs text-gray-900 rounded-xl p-2 focus:outline-none font-satoshi-black ${
+                        clienteSelObj ? 'border-[#222222] font-bold' : 'border-gray-300 focus:border-[#FFD800]'
                       }`}
                       value={clienteSearch || (clienteSelObj ? clienteSelObj.nombre : '')}
                       onFocus={() => {
@@ -897,19 +896,19 @@ export default function VentasPage() {
                       }}
                     />
 
-                    {/* POPUP DE SELECCIÓN DE CLIENTE DESPLEGABLE HACIA ABAJO */}
+                    {/* POPUP DE SELECCIÓN DE CLIENTE */}
                     {showClienteDropdown && (
-                      <div className="absolute left-0 right-0 top-full mt-1 bg-[#1D2935] border border-slate-700 rounded-xl shadow-2xl max-h-48 overflow-y-auto z-[100] divide-y divide-slate-800 text-xs">
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-[100] divide-y divide-gray-100 text-xs">
                         <div
                           onClick={() => {
                             setClienteSelObj({ nit: 'CF_GENERAL', nombre: 'Consumidor Final (CF)' });
                             setClienteSearch('');
                             setShowClienteDropdown(false);
                           }}
-                          className="p-2.5 hover:bg-[#253443] cursor-pointer text-[#0DE8C0] font-satoshi-black flex justify-between items-center"
+                          className="p-2.5 hover:bg-gray-50 cursor-pointer text-gray-900 font-satoshi-black font-bold flex justify-between items-center"
                         >
                           <span>Consumidor Final (CF)</span>
-                          <span className="text-[10px] bg-[#0DE8C0]/10 px-2 py-0.5 rounded">Elegir</span>
+                          <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded border border-gray-200">Elegir</span>
                         </div>
 
                         {clientesFiltradosPOS.map((cli, idx) => (
@@ -920,27 +919,27 @@ export default function VentasPage() {
                               setClienteSearch('');
                               setShowClienteDropdown(false);
                             }}
-                            className="p-2.5 hover:bg-[#253443] cursor-pointer text-slate-200 flex justify-between items-center"
+                            className="p-2.5 hover:bg-gray-50 cursor-pointer text-gray-800 flex justify-between items-center"
                           >
                             <div>
-                              <div className="font-satoshi-black text-white">{cli.nombre}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">NIT/ID: {cli.nit || cli.id_cliente}</div>
+                              <div className="font-satoshi-black text-gray-900 font-bold">{cli.nombre}</div>
+                              <div className="text-[10px] text-gray-500 font-mono">NIT/ID: {cli.nit || cli.id_cliente}</div>
                             </div>
-                            <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">Elegir</span>
+                            <span className="text-[10px] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold">Elegir</span>
                           </div>
                         ))}
 
                         {clientesFiltradosPOS.length === 0 && (
-                          <div className="p-3 text-slate-500 text-center text-[11px]">No se encontraron clientes.</div>
+                          <div className="p-3 text-gray-500 text-center text-[11px]">No se encontraron clientes.</div>
                         )}
                       </div>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">Método de Pago</label>
+                    <label className="block text-[10px] font-satoshi-black text-gray-600 uppercase mb-1 font-bold">Método de Pago</label>
                     <select
-                      className="w-full bg-[#1D2935] border border-slate-700 text-xs text-white font-satoshi-black rounded-xl p-2 focus:outline-none"
+                      className="w-full bg-gray-50 border border-gray-300 text-xs text-gray-900 font-satoshi-black focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl p-2 focus:outline-none cursor-pointer transition-all"
                       value={metodoPago}
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMetodoPago(e.target.value as any)}
                     >
@@ -952,48 +951,48 @@ export default function VentasPage() {
                 </div>
 
                 {/* LIQUIDACIÓN FINAL */}
-                <div className="bg-[#1D2935] p-3 rounded-xl border border-slate-700/80 space-y-1 text-xs">
-                  <div className="flex justify-between text-slate-400">
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-1 text-xs">
+                  <div className="flex justify-between text-gray-600">
                     <span>Subtotal Bruto:</span>
                     <span>{formatoCOP(subtotalBrutoCarrito)}</span>
                   </div>
 
                   {valorDescuentoEfectivo > 0 && (
-                    <div className="flex justify-between text-amber-400 font-satoshi-black">
+                    <div className="flex justify-between text-amber-800 font-satoshi-black font-bold">
                       <span>Descuento Aplicado:</span>
                       <span>-{formatoCOP(valorDescuentoEfectivo)}</span>
                     </div>
                   )}
 
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between text-gray-600">
                     <span>Base Gravable:</span>
                     <span>{formatoCOP(baseGravableTotal)}</span>
                   </div>
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between text-gray-600">
                     <span>IVA Calculado:</span>
                     <span>{formatoCOP(ivaMontoTotal)}</span>
                   </div>
-                  <div className="flex justify-between text-sm font-satoshi-black text-white pt-1 border-t border-slate-700/60">
+                  <div className="flex justify-between text-sm font-satoshi-black text-gray-900 pt-1 border-t border-gray-200 font-bold">
                     <span>TOTAL A COBRAR:</span>
-                    <span className="text-[#0DE8C0]">{formatoCOP(totalCobroPOS)}</span>
+                    <span className="text-gray-900">{formatoCOP(totalCobroPOS)}</span>
                   </div>
                 </div>
 
                 {metodoPago === 'EFECTIVO' && (
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <label className="block text-[10px] font-satoshi-black text-[#A0AEC0] uppercase mb-1">Paga Con ($)</label>
+                      <label className="block text-[10px] font-satoshi-black text-gray-600 uppercase mb-1 font-bold">Paga Con ($)</label>
                       <input
                         type="number"
-                        className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-2 text-white focus:outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl p-2 text-gray-900 focus:outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         value={montoPagaCon}
                         onChange={(e) => setMontoPagaCon(Number(e.target.value))}
                       />
                     </div>
                     {cambioDevuelto > 0 && (
-                      <div className="bg-[#1D2935] p-2 rounded-xl border border-slate-700 flex flex-col justify-center">
-                        <span className="text-[9px] text-slate-400 font-satoshi-black uppercase">Cambio Devuelto:</span>
-                        <span className="text-amber-400 font-satoshi-black text-xs">{formatoCOP(cambioDevuelto)}</span>
+                      <div className="bg-gray-50 p-2 rounded-xl border border-gray-200 flex flex-col justify-center">
+                        <span className="text-[9px] text-gray-500 font-satoshi-black uppercase font-bold">Cambio Devuelto:</span>
+                        <span className="text-amber-800 font-satoshi-black text-xs font-bold">{formatoCOP(cambioDevuelto)}</span>
                       </div>
                     )}
                   </div>
@@ -1003,13 +1002,13 @@ export default function VentasPage() {
                   type="button"
                   onClick={handleCobrarVenta}
                   disabled={cart.length === 0 || isProcessing || (Number(montoDescuento) > 0 && !motivoDescuento.trim())}
-                  className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] disabled:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-[#1D2935] font-satoshi-black p-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-xl flex items-center justify-center gap-2"
+                  className="w-full bg-[#FFD800] hover:bg-[#FDCB13] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-[#222222] font-satoshi-black p-3.5 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center justify-center gap-2 font-bold"
                 >
                   {isProcessing ? (
                     <span>Procesando Venta...</span>
                   ) : (
                     <>
-                      <svg className="w-5 h-5 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-[#222222]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
                       <span>Cobrar y Generar Ticket</span>
@@ -1027,14 +1026,14 @@ export default function VentasPage() {
       {/* PESTAÑA 2: HISTORIAL */}
       {activeTab === 'HISTORIAL' && (
         <div className="space-y-4">
-          <div className="bg-[#253443] border border-slate-700/60 rounded-2xl p-3 shadow-lg flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
             <div className="relative w-full md:w-80">
-              <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input 
                 type="text" 
-                className="w-full bg-[#1D2935] border border-slate-700 focus:border-[#0DE8C0] rounded-xl pl-10 pr-3 py-2.5 text-xs text-white placeholder-[#A0AEC0] focus:outline-none transition"
+                className="w-full bg-gray-50 border border-gray-300 focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 rounded-xl pl-10 pr-3 py-2.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none transition-all font-satoshi-regular"
                 placeholder="Buscar por ID Factura o Cliente..."
                 value={searchHistorial}
                 onChange={(e) => setSearchHistorial(e.target.value)}
@@ -1042,51 +1041,51 @@ export default function VentasPage() {
             </div>
           </div>
 
-          <div className="bg-[#253443] border border-slate-700/50 rounded-2xl shadow-xl overflow-x-auto">
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-[#1D2935] text-[11px] font-satoshi-black text-[#A0AEC0] uppercase tracking-wider border-b border-slate-700">
-                  <th className="p-4">N° Factura</th>
+                <tr className="bg-gray-50 text-[11px] font-satoshi-black text-gray-600 uppercase tracking-wider border-b border-gray-200">
+                  <th className="p-4 rounded-tl-2xl">N° Factura</th>
                   <th className="p-4">Fecha / Hora</th>
                   <th className="p-4">Cliente</th>
                   <th className="p-4">Vendedor</th>
                   <th className="p-4">Descuento Auditoría</th>
                   <th className="p-4 text-right">Total</th>
                   <th className="p-4 text-center">Estado</th>
-                  <th className="p-4 text-center">Acciones</th>
+                  <th className="p-4 text-center rounded-tr-2xl">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-700/60 text-xs font-satoshi-regular">
+              <tbody className="divide-y divide-gray-100 text-xs font-satoshi-regular text-gray-800">
                 {ventasHistorialFiltradas.map((v, idx) => {
                   const isAnulada = v.estado === 'ANULADA';
                   const tieneDescuento = v.descuento_monto && v.descuento_monto > 0;
 
                   return (
-                    <tr key={v.id_doc || idx} className="hover:bg-[#1D2935]/80 transition-colors">
-                      <td className="p-4 font-mono font-bold text-white">{v.id_factura}</td>
-                      <td className="p-4 text-slate-300">{new Date(v.fecha_cobro || v.fecha).toLocaleString()}</td>
-                      <td className="p-4 text-slate-300">{v.cliente_nombre}</td>
-                      <td className="p-4 text-[#0DE8C0] font-satoshi-black">{v.vendedor_nombre}</td>
+                    <tr key={v.id_doc || idx} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="p-4 font-mono font-bold text-gray-900">{v.id_factura}</td>
+                      <td className="p-4 text-gray-600">{new Date(v.fecha_cobro || v.fecha).toLocaleString()}</td>
+                      <td className="p-4 text-gray-600">{v.cliente_nombre}</td>
+                      <td className="p-4 text-gray-900 font-satoshi-black font-bold">{v.vendedor_nombre}</td>
                       
                       <td className="p-4">
                         {tieneDescuento ? (
                           <div>
-                            <span className="text-amber-400 font-satoshi-black">
+                            <span className="text-amber-800 font-satoshi-black font-bold">
                               -{formatoCOP(v.descuento_monto)}
                             </span>
-                            <span className="text-[10px] text-slate-400 block italic truncate max-w-xs">
+                            <span className="text-[10px] text-gray-500 block italic truncate max-w-xs">
                               &quot;{v.descuento_motivo}&quot;
                             </span>
                           </div>
                         ) : (
-                          <span className="text-slate-500 font-mono">Sin Desc.</span>
+                          <span className="text-gray-400 font-mono">Sin Desc.</span>
                         )}
                       </td>
 
-                      <td className="p-4 text-right font-satoshi-black text-[#0DE8C0] text-sm">{formatoCOP(v.total)}</td>
+                      <td className="p-4 text-right font-satoshi-black text-gray-900 text-sm font-bold">{formatoCOP(v.total)}</td>
                       <td className="p-4 text-center">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-satoshi-black ${
-                          isAnulada ? 'bg-red-950/80 text-red-400' : 'bg-emerald-950/80 text-emerald-300'
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-satoshi-black font-bold ${
+                          isAnulada ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                         }`}>
                           {v.estado || 'PAGADA'}
                         </span>
@@ -1096,7 +1095,7 @@ export default function VentasPage() {
                           <button
                             type="button"
                             onClick={() => { setSelectedVentaTicket(v); setShowTicketModal(true); }}
-                            className="bg-[#1D2935] text-[#0DE8C0] border border-[#0DE8C0]/40 font-satoshi-black px-3 py-1.5 rounded-lg text-xs"
+                            className="bg-gray-100 text-gray-900 border border-gray-300 font-satoshi-black px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-200 transition"
                           >
                             Ver Ticket
                           </button>
@@ -1104,7 +1103,7 @@ export default function VentasPage() {
                             <button
                               type="button"
                               onClick={() => handleOpenAnular(v)}
-                              className="bg-red-950/60 text-red-400 border border-red-800/40 font-satoshi-black px-2.5 py-1.5 rounded-lg text-xs"
+                              className="bg-red-50 text-red-600 border border-red-200 font-satoshi-black px-2.5 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 transition"
                             >
                               Anular
                             </button>
@@ -1120,51 +1119,48 @@ export default function VentasPage() {
         </div>
       )}
 
-      {/* MODAL COMPROBANTE FISCAL / TICKET TIPO PAPEL TÉRMICO CON IMPRESIÓN Y WHATSAPP */}
+      {/* MODAL COMPROBANTE FISCAL / TICKET TIPO PAPEL TÉRMICO */}
       {showTicketModal && selectedVentaTicket && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white text-slate-900 rounded-3xl w-full max-w-md p-8 shadow-2xl font-mono text-xs relative space-y-5 border border-slate-200">
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white text-gray-900 rounded-3xl w-full max-w-md p-8 shadow-2xl font-mono text-xs relative space-y-5 border border-gray-200">
             
             <button 
               onClick={() => setShowTicketModal(false)} 
-              className="absolute right-5 top-5 text-slate-400 hover:text-slate-700 transition"
+              className="absolute right-5 top-5 text-gray-400 hover:text-gray-700 transition"
             >
               ✕
             </button>
 
             {/* ENCABEZADO DEL COMPROBANTE */}
             <div className="text-center space-y-1">
-              <h2 className="font-satoshi-black font-black text-lg tracking-wider text-slate-900 uppercase">
+              <h2 className="font-satoshi-black font-black text-lg tracking-wider text-gray-900 uppercase">
                 FACTURA / COMPROBANTE FISCAL
               </h2>
-              <p className="text-xs font-satoshi-black text-slate-700">
-                {selectedVentaTicket.vendedor_nombre || userAuth?.nombre || 'Leonardo Villamizar'}
+              <p className="text-xs font-satoshi-black text-gray-700 font-bold">
+                {selectedVentaTicket.vendedor_nombre || userAuth?.nombre || 'Atención POS'}
               </p>
-              <p className="text-[11px] text-slate-500 font-mono">
+              <p className="text-[11px] text-gray-500 font-mono">
                 N° {selectedVentaTicket.id_factura}
               </p>
-              <p className="text-[11px] text-slate-500 font-mono">
+              <p className="text-[11px] text-gray-500 font-mono">
                 Ref Orden: {selectedVentaTicket.ref_orden || 'N/A'}
               </p>
             </div>
 
-            {/* LÍNEA DIVISORA CORTE */}
-            <div className="border-b border-dashed border-slate-300" />
+            <div className="border-b border-dashed border-gray-300" />
 
             {/* DATOS DEL CLIENTE */}
-            <div className="space-y-1 text-[11px] text-slate-700">
-              <p><strong className="text-slate-900">CLIENTE:</strong> {selectedVentaTicket.cliente_nombre || 'Consumidor Final (CF)'}</p>
-              <p><strong className="text-slate-900">NIT/CC:</strong> {selectedVentaTicket.cliente_nit || 'CF_GENERAL'} (Tipo: 13)</p>
-              <p><strong className="text-slate-900">CORREO:</strong> {selectedVentaTicket.cliente_correo || 'cliente@general.com'}</p>
-              <p><strong className="text-slate-900">TELÉFONO:</strong> {selectedVentaTicket.cliente_telefono || 'N/A'}</p>
-              <p><strong className="text-slate-900">DIRECCIÓN:</strong> {selectedVentaTicket.cliente_direccion || 'N/A'}</p>
-              <p><strong className="text-slate-900">CIUDAD:</strong> {selectedVentaTicket.cliente_ciudad || 'Cali'}</p>
-              <p><strong className="text-slate-900">RESP. FISCAL:</strong> R-99-PN</p>
-              <p><strong className="text-slate-900">MÉTODO:</strong> {selectedVentaTicket.metodo_pago || 'EFECTIVO'}</p>
+            <div className="space-y-1 text-[11px] text-gray-700">
+              <p><strong className="text-gray-900">CLIENTE:</strong> {selectedVentaTicket.cliente_nombre || 'Consumidor Final (CF)'}</p>
+              <p><strong className="text-gray-900">NIT/CC:</strong> {selectedVentaTicket.cliente_nit || 'CF_GENERAL'}</p>
+              <p><strong className="text-gray-900">CORREO:</strong> {selectedVentaTicket.cliente_correo || 'cliente@general.com'}</p>
+              <p><strong className="text-gray-900">TELÉFONO:</strong> {selectedVentaTicket.cliente_telefono || 'N/A'}</p>
+              <p><strong className="text-gray-900">DIRECCIÓN:</strong> {selectedVentaTicket.cliente_direccion || 'N/A'}</p>
+              <p><strong className="text-gray-900">CIUDAD:</strong> {selectedVentaTicket.cliente_ciudad || 'Cali'}</p>
+              <p><strong className="text-gray-900">MÉTODO:</strong> {selectedVentaTicket.metodo_pago || 'EFECTIVO'}</p>
             </div>
 
-            {/* LÍNEA DIVISORA CORTE */}
-            <div className="border-b border-dashed border-slate-300" />
+            <div className="border-b border-dashed border-gray-300" />
 
             {/* LISTA DE PRODUCTOS VENDIDOS */}
             <div className="space-y-3">
@@ -1175,45 +1171,44 @@ export default function VentasPage() {
                 return (
                   <div key={i} className="flex justify-between items-start text-xs">
                     <div>
-                      <div className="font-bold text-slate-900">{it.nombre}</div>
-                      <div className="text-[10px] text-slate-500">
+                      <div className="font-bold text-gray-900">{it.nombre}</div>
+                      <div className="text-[10px] text-gray-500">
                         Cant: {it.cantidad} x {formatoCOP(it.precio)} (IVA {tarifaIvaItem}%)
                       </div>
                     </div>
-                    <span className="font-bold text-slate-900">{formatoCOP(totalItem)}</span>
+                    <span className="font-bold text-gray-900">{formatoCOP(totalItem)}</span>
                   </div>
                 );
               })}
             </div>
 
-            {/* LÍNEA DIVISORA CORTE */}
-            <div className="border-b border-dashed border-slate-300" />
+            <div className="border-b border-dashed border-gray-300" />
 
             {/* CÁLCULO Y LIQUIDACIÓN IMPOSITIVA */}
-            <div className="space-y-1.5 pt-1 text-slate-700 text-xs">
+            <div className="space-y-1.5 pt-1 text-gray-700 text-xs">
               <div className="flex justify-between">
                 <span>Subtotal Gravable:</span>
-                <span className="font-mono text-slate-900">{formatoCOP(selectedVentaTicket.subtotal || selectedVentaTicket.total)}</span>
+                <span className="font-mono text-gray-900 font-bold">{formatoCOP(selectedVentaTicket.subtotal || selectedVentaTicket.total)}</span>
               </div>
               <div className="flex justify-between">
                 <span>IVA Discriminado:</span>
-                <span className="font-mono text-slate-900">{formatoCOP(selectedVentaTicket.iva_monto || 0)}</span>
+                <span className="font-mono text-gray-900 font-bold">{formatoCOP(selectedVentaTicket.iva_monto || 0)}</span>
               </div>
 
-              <div className="border-b border-slate-900 pt-1" />
+              <div className="border-b border-gray-900 pt-1" />
 
-              <div className="flex justify-between text-base font-black text-slate-900 pt-1">
+              <div className="flex justify-between text-base font-black text-gray-900 pt-1">
                 <span>TOTAL:</span>
                 <span className="font-mono">{formatoCOP(selectedVentaTicket.total)}</span>
               </div>
             </div>
 
-            {/* BOTONES DE IMPRESIÓN PDF Y ENVÍO POR WHATSAPP */}
+            {/* BOTONES DE IMPRESIÓN Y ENVÍO POR WHATSAPP */}
             <div className="pt-2 space-y-2">
               <button
                 type="button"
                 onClick={() => handleEnviarWhatsAppTicket(selectedVentaTicket)}
-                className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-satoshi-black py-3 rounded-2xl text-xs uppercase tracking-wider transition-all duration-300 shadow-md flex items-center justify-center gap-2"
+                className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white font-satoshi-black py-3 rounded-2xl text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center justify-center gap-2 font-bold"
               >
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                   <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.653-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.633.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
@@ -1224,9 +1219,9 @@ export default function VentasPage() {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="w-full bg-[#0DE8C0] hover:bg-[#0bcfa8] text-[#1D2935] font-satoshi-black py-3.5 rounded-2xl text-xs uppercase tracking-wider transition-all duration-300 shadow-md flex items-center justify-center gap-2"
+                className="w-full bg-[#222222] hover:bg-[#333333] text-white font-satoshi-black py-3.5 rounded-2xl text-xs uppercase tracking-wider transition-all duration-300 shadow-sm flex items-center justify-center gap-2 font-bold"
               >
-                <svg className="w-4 h-4 text-[#1D2935]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
                 <span>IMPRIMIR COMPROBANTE PDF</span>
@@ -1239,19 +1234,19 @@ export default function VentasPage() {
 
       {/* MODAL ANULACIÓN */}
       {showModalAnular && ventaAAnular && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-[#253443] border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-700/60 pb-3">
-              <h3 className="text-lg font-satoshi-black text-white uppercase">Anular Venta N° {ventaAAnular.id_factura}</h3>
-              <button onClick={() => setShowModalAnular(false)} className="text-slate-400 hover:text-white">✕</button>
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-md shadow-2xl font-sans space-y-4 text-gray-800">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <h3 className="text-lg font-satoshi-black text-gray-900 uppercase font-bold">Anular Venta N° {ventaAAnular.id_factura}</h3>
+              <button onClick={() => setShowModalAnular(false)} className="text-gray-400 hover:text-gray-700">✕</button>
             </div>
 
             <form onSubmit={handleConfirmarAnulacion} className="space-y-4">
               <div>
-                <label className="block text-xs font-satoshi-black text-white uppercase mb-2">Motivo *</label>
+                <label className="block text-xs font-satoshi-black text-gray-700 uppercase mb-2 font-bold">Motivo *</label>
                 <textarea
                   rows={3}
-                  className="w-full bg-[#1D2935] border border-slate-700 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#0DE8C0]"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 focus:outline-none focus:border-[#FFD800] focus:ring-2 focus:ring-[#FFD800]/20 transition-all font-satoshi-regular"
                   placeholder="Justificación de anulación..."
                   value={motivoAnulacion}
                   onChange={(e) => setMotivoAnulacion(e.target.value)}
@@ -1260,8 +1255,8 @@ export default function VentasPage() {
               </div>
 
               <div className="flex gap-3">
-                <button type="button" onClick={() => setShowModalAnular(false)} className="flex-1 bg-[#1D2935] text-slate-300 font-satoshi-black py-3 rounded-xl text-xs uppercase hover:bg-slate-800">Cancelar</button>
-                <button type="submit" disabled={isAnulando} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-satoshi-black py-3 rounded-xl text-xs uppercase disabled:opacity-50">
+                <button type="button" onClick={() => setShowModalAnular(false)} className="flex-1 bg-gray-100 text-gray-700 font-satoshi-black py-3 rounded-xl text-xs uppercase hover:bg-gray-200 transition-colors">Cancelar</button>
+                <button type="submit" disabled={isAnulando} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-satoshi-black py-3 rounded-xl text-xs uppercase disabled:opacity-50 transition-colors font-bold shadow-sm">
                   {isAnulando ? 'Anulando...' : 'Confirmar Anulación'}
                 </button>
               </div>
