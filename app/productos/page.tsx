@@ -91,6 +91,8 @@ export default function ProductosPage() {
     };
   }, [userAuth]);
 
+  const esAdmin = userAuth?.rol === 'ADMIN';
+
   // ==========================================
   // 🧠 RENDIMIENTO: LÓGICA DE FILTROS INTELIGENTES Y MÉTRICAS
   // ==========================================
@@ -291,6 +293,49 @@ export default function ProductosPage() {
     if (numStr.includes(',')) numStr = numStr.replace(/\./g, '').replace(',', '.');
     const parsed = Number(numStr);
     return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // ==========================================
+  // EXPORTAR TODO EL INVENTARIO A CSV (SOLO ADMIN)
+  // ==========================================
+  const handleExportarInventario = () => {
+    if (productos.length === 0) {
+      return alert('No hay productos en el inventario para exportar.');
+    }
+
+    const bom = '\uFEFF';
+    let csvContent = 'SEP=;\n';
+    // Definimos los encabezados del CSV
+    csvContent += 'SKU;NOMBRE_PRODUCTO;CATEGORIA;PRECIO_AL_POR_MAYOR;PRECIO_TIENDA_FISICA;PRECIO_ECOMMERCE;IVA_INCLUIDO;TARIFA_IVA;COSTO_IMPORTACION_FABRICACION;COSTO_FULFILMENT;STOCK_TOTAL_EMPRESA\n';
+
+    productos.forEach(p => {
+      const fSku = p.sku || 'N/A';
+      const fNombre = (p.nombre || 'Sin nombre').replace(/;/g, ' ');
+      const fCat = (p.categoria || 'SIN CATEGORIA').replace(/;/g, ' ');
+      const fPMayor = p.pmayor || 0;
+      const fPLocal = p.plocal || p.precio || 0;
+      const fPEcom = p.pecom || 0;
+      const fIvaIncluido = p.aplica_iva ? 'SI' : 'NO';
+      const fTarifaIva = p.iva || 0;
+      const fCostoImp = p.costo_importacion || 0;
+      const fCostoFul = p.costo_fulfilment || 0;
+      const fStockTotal = obtenerStockTotalProducto(p, 'TODAS');
+
+      csvContent += `${fSku};${fNombre};${fCat};${fPMayor};${fPLocal};${fPEcom};${fIvaIncluido};${fTarifaIva};${fCostoImp};${fCostoFul};${fStockTotal}\n`;
+    });
+
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Nombre del archivo con la fecha actual
+    const fechaDescarga = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `Inventario_LoboStock_${fechaDescarga}.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // ==========================================
@@ -609,7 +654,22 @@ export default function ProductosPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center flex-wrap gap-3 shrink-0">
+          
+          {/* BOTÓN EXPORTAR SOLO PARA ADMIN */}
+          {esAdmin && (
+            <button
+              type="button"
+              onClick={handleExportarInventario}
+              className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-satoshi-black px-4 py-3 rounded-xl text-xs uppercase tracking-wider transition-all duration-300 flex items-center gap-2 font-bold shadow-sm"
+            >
+              <svg className="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>Exportar (CSV)</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setShowModalMasivo(true)}
@@ -1214,12 +1274,12 @@ export default function ProductosPage() {
                       <span>Asignación de Stock por Sede</span>
                     </label>
                     <span className="text-[10px] text-gray-500 font-mono">
-                      Subtotal: {sedesFormulario.reduce((acc, s) => acc + Number(stockMap[s.id_sucursal] || 0), 0)} unds
+                      Subtotal: {obtenerSedesAutorizadasUsuario().reduce((acc, s) => acc + Number(stockMap[s.id_sucursal] || 0), 0)} unds
                     </span>
                   </div>
 
                   <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {sedesFormulario.map((suc, i) => (
+                    {obtenerSedesAutorizadasUsuario().map((suc, i) => (
                       <div key={suc.id_sucursal || i} className="bg-white border border-gray-200 p-2.5 rounded-lg flex items-center justify-between gap-3 text-xs">
                         <span className="font-satoshi-black text-gray-900 truncate flex items-center gap-1 font-bold">
                           <svg className="w-3.5 h-3.5 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1373,15 +1433,15 @@ export default function ProductosPage() {
                       <div className="bg-white p-3 rounded-lg border border-gray-200 space-y-1 text-xs">
                         <div className="flex justify-between text-gray-600">
                           <span>Precio Final Definido:</span>
-                          <span className="font-satoshi-black text-gray-900 font-bold">{formatoCOP(precioReferenciaForm)}</span>
+                          <span className="font-satoshi-black text-gray-900 font-bold">{formatoCOP(Number(plocal) || Number(pecom) || Number(pmayor) || 0)}</span>
                         </div>
                         <div className="flex justify-between text-gray-600">
                           <span>Base Gravable Ajustada:</span>
-                          <span className="font-mono text-gray-800">{formatoCOP(desgloseForm.base)}</span>
+                          <span className="font-mono text-gray-800">{formatoCOP(calcularBaseEIVA(Number(plocal) || Number(pecom) || Number(pmayor) || 0, tarifaIva, aplicaIva).base)}</span>
                         </div>
                         <div className="flex justify-between text-gray-900 font-satoshi-black pt-1 border-t border-gray-100 font-bold">
                           <span>IVA Discriminado ({tarifaIva}%):</span>
-                          <span>{formatoCOP(desgloseForm.iva)}</span>
+                          <span>{formatoCOP(calcularBaseEIVA(Number(plocal) || Number(pecom) || Number(pmayor) || 0, tarifaIva, aplicaIva).iva)}</span>
                         </div>
                       </div>
                     </div>
