@@ -12,23 +12,23 @@ export default function CalculadoraPage() {
   // ==========================================
   // ESTADOS DEL SIMULADOR UNITARIO
   // ==========================================
-  const [simCanal, setSimCanal] = useState<'POS' | 'MAYOR' | 'ECOM' | 'DROKO'>('DROKO');
+  const [simCanal, setSimCanal] = useState<'POS' | 'MAYOR' | 'ECOM' | 'DROKO'>('ECOM');
   const [simCogs, setSimCogs] = useState<number>(45000); // Costo Producto
   const [simOps, setSimOps] = useState<number>(8000);   // Picking / Empaque (Solo E-Com)
   const [simOtros, setSimOtros] = useState<number>(2000); // Otros Gastos
   const [simMargenDeseado, setSimMargenDeseado] = useState<number>(25); // Margen Neto %
   
-  // E-COMMERCE: Factores de Fuga & Bonificación a Vendedores & Cantidad / IVA
+  // E-COMMERCE: Factores de Fuga, Vendedor, Volumen e IVA
   const [simDevRate, setSimDevRate] = useState<number>(18); // % Devolución Logística (Solo E-Com)
   const [simLossRate, setSimLossRate] = useState<number>(5);  // % Merma (Solo E-Com)
-  const [simBonifVendedor, setSimBonifVendedor] = useState<number>(0); // % Bonificación Vendedor (Solo E-Com, por defecto 0%)
-  const [simCantidadEcom, setSimCantidadEcom] = useState<number>(100); // Cantidad proyectada a vender E-Com
+  const [simBonifVendedor, setSimBonifVendedor] = useState<number>(5); // % Comisión / Bonificación Vendedor (Solo E-Com)
+  const [simCantidadEcom, setSimCantidadEcom] = useState<number>(100); // Cantidad proyectada E-Com
   const [simAplicaIvaEcom, setSimAplicaIvaEcom] = useState<boolean>(false); // ¿Aplica IVA en E-Com?
-  const [simTarifaIvaEcom, setSimTarifaIvaEcom] = useState<number>(19); // Tarifa IVA E-Com %
+  const [simTarifaIvaEcom, setSimTarifaIvaEcom] = useState<number>(19); // Tarifa IVA % E-Com
 
   // DROKO: Cantidad, Comisión 1% e IVA Opcional
   const [simPlatFee, setSimPlatFee] = useState<number>(1);    // % Comisión Plataforma Droko (Por defecto 1%)
-  const [simCantidadDroko, setSimCantidadDroko] = useState<number>(100); // Cantidad proyectada a vender
+  const [simCantidadDroko, setSimCantidadDroko] = useState<number>(100); // Cantidad proyectada Droko
   const [simAplicaIvaDroko, setSimAplicaIvaDroko] = useState<boolean>(false); // ¿Aplica IVA en Droko?
   const [simTarifaIvaDroko, setSimTarifaIvaDroko] = useState<number>(19); // Tarifa IVA % Droko
 
@@ -81,20 +81,20 @@ export default function CalculadoraPage() {
       setSimMargenDeseado(15);
       setSimOps(0);
     } else if (simCanal === 'ECOM') {
-      setSimDevRate(18); // Fuga solo E-Com
-      setSimLossRate(5);  // Merma solo E-Com
+      setSimDevRate(18);
+      setSimLossRate(5);
       setSimPlatFee(0);
-      setSimBonifVendedor(0); // Por defecto 0%
+      setSimBonifVendedor(5);
       setSimMargenDeseado(25);
-      setSimOps(8000);   // Picking solo E-Com
+      setSimOps(8000);
     } else {
       // DROKO
-      setSimDevRate(0);  // Fuga NO afecta Droko
-      setSimLossRate(0); // Merma NO afecta Droko
-      setSimPlatFee(1);  // Comisión 1% por defecto
+      setSimDevRate(0);
+      setSimLossRate(0);
+      setSimPlatFee(1);
       setSimBonifVendedor(0);
       setSimMargenDeseado(20);
-      setSimOps(0);      // Picking NO afecta Droko
+      setSimOps(0);
     }
   }, [simCanal]);
 
@@ -124,29 +124,27 @@ export default function CalculadoraPage() {
 
     const costoRealUnit = costoDirectoUnit + totalProvisionFuga;
 
-    // --- OPCIÓN 1: SUBIR PRECIO PARA MANTENER GANANCIA ---
-    const den1 = 1 - mTarget - platFeePct - sellerBonusPct;
-    const precioOpt1 = den1 > 0 ? (costoRealUnit / den1) : (costoRealUnit * 2);
-    
-    // --- OPCIÓN 2: MANTENER PRECIO BASE Y ABSORBER EL IMPACTO (Solo para E-COM) ---
-    const denBase = 1 - mTarget - platFeePct; // Precio base sin bonificación al vendedor
-    const precioOpt2 = denBase > 0 ? (costoRealUnit / denBase) : (costoRealUnit * 2);
-    const bonifVendedorMontoOpt2 = precioOpt2 * sellerBonusPct;
-    const utilidadNetaUnitOpt2 = precioOpt2 - (precioOpt2 * platFeePct) - bonifVendedorMontoOpt2 - costoRealUnit;
-    const margenRealOpt2 = precioOpt2 > 0 ? (utilidadNetaUnitOpt2 / precioOpt2) : 0;
+    // --- OPCIÓN 1: SUBIR PRECIO PARA CONSERVAR GANANCIA ---
+    const denOpt1 = 1 - mTarget - platFeePct - sellerBonusPct;
+    const precioOpt1Unit = denOpt1 > 0 ? (costoRealUnit / denOpt1) : (costoRealUnit * 2);
+    const bonifVendedorMontoOpt1 = precioOpt1Unit * sellerBonusPct;
+    const comisionPlatMontoOpt1 = precioOpt1Unit * platFeePct;
+    const utilidadNetaUnitOpt1 = precioOpt1Unit * mTarget;
 
-    const comisionPlatMonto = precioOpt1 * platFeePct;
-    const bonifVendedorMonto = precioOpt1 * sellerBonusPct;
+    // --- OPCIÓN 2: MANTENER PRECIO BASE Y DISMINUIR % DE GANANCIA (E-Com) ---
+    const denOpt2 = 1 - mTarget - platFeePct; // Precio base calculado sin la comisión
+    const precioOpt2Unit = denOpt2 > 0 ? (costoRealUnit / denOpt2) : (costoRealUnit * 2);
+    const bonifVendedorMontoOpt2 = precioOpt2Unit * sellerBonusPct;
+    const comisionPlatMontoOpt2 = precioOpt2Unit * platFeePct;
+    const utilidadNetaUnitOpt2 = precioOpt2Unit - comisionPlatMontoOpt2 - bonifVendedorMontoOpt2 - costoRealUnit;
+    const margenRealPctOpt2 = precioOpt2Unit > 0 ? (utilidadNetaUnitOpt2 / precioOpt2Unit) * 100 : 0;
 
-    // IVA si aplica
+    // IVA si aplica (Droko o E-Com)
     const aplicaIvaActual = simCanal === 'DROKO' ? simAplicaIvaDroko : (simCanal === 'ECOM' ? simAplicaIvaEcom : false);
     const tarifaIvaActual = simCanal === 'DROKO' ? simTarifaIvaDroko : (simCanal === 'ECOM' ? simTarifaIvaEcom : 0);
     const ivaPct = aplicaIvaActual ? ((Number(tarifaIvaActual) || 0) / 100) : 0;
     
-    const ivaMontoUnitOpt1 = precioOpt1 * ivaPct;
-    const ivaMontoUnitOpt2 = precioOpt2 * ivaPct;
-
-    const utilidadNetaUnit = precioOpt1 - comisionPlatMonto - bonifVendedorMonto - costoRealUnit;
+    const ivaMontoUnitOpt1 = precioOpt1Unit * ivaPct;
 
     // Proyecciones Masivas por Cantidad
     let cantidadProyectada = 1;
@@ -154,48 +152,49 @@ export default function CalculadoraPage() {
     else if (simCanal === 'ECOM') cantidadProyectada = Math.max(1, Number(simCantidadEcom) || 1);
 
     // Opcion 1 Totales
-    const totalVentasProyectadas = precioOpt1 * cantidadProyectada;
+    const totalVentasProyectadasOpt1 = precioOpt1Unit * cantidadProyectada;
     const totalCostoProducto = cogs * cantidadProyectada;
     const totalPickingEmpaque = ops * cantidadProyectada;
     const totalOtrosGastos = otros * cantidadProyectada;
     const totalProvisionFugaProyectada = totalProvisionFuga * cantidadProyectada;
-    const totalComisionPlataforma = comisionPlatMonto * cantidadProyectada;
-    const totalBonifVendedor = bonifVendedorMonto * cantidadProyectada;
-    const totalIvaMonto = ivaMontoUnitOpt1 * cantidadProyectada;
-    const totalUtilidadNeta = utilidadNetaUnit * cantidadProyectada;
+    const totalComisionPlataforma = comisionPlatMontoOpt1 * cantidadProyectada;
+    const totalBonifVendedorOpt1 = bonifVendedorMontoOpt1 * cantidadProyectada;
+    const totalIvaMontoOpt1 = ivaMontoUnitOpt1 * cantidadProyectada;
+    const totalUtilidadNetaOpt1 = utilidadNetaUnitOpt1 * cantidadProyectada;
 
-    const totalDeduciblesUnit = costoRealUnit + comisionPlatMonto + bonifVendedorMonto + ivaMontoUnitOpt1;
-    const totalDeduciblesProyectado = totalDeduciblesUnit * cantidadProyectada;
+    const totalDeduciblesUnitOpt1 = costoRealUnit + comisionPlatMontoOpt1 + bonifVendedorMontoOpt1 + ivaMontoUnitOpt1;
+    const totalDeduciblesProyectadoOpt1 = totalDeduciblesUnitOpt1 * cantidadProyectada;
 
-    // Opcion 2 Totales (E-COM Only)
+    // Opcion 2 Totales (E-Com)
     const totalUtilidadNetaOpt2 = utilidadNetaUnitOpt2 * cantidadProyectada;
 
     return {
       costoDirectoUnit,
       totalProvisionFuga,
       costoRealUnit,
-      precioSugeridoUnit: precioOpt1,
-      precioBaseOpt2: precioOpt2,
-      utilidadNetaUnit,
+      precioSugeridoUnit: precioOpt1Unit,
+      precioBaseOpt2: precioOpt2Unit,
+      utilidadNetaUnitOpt1,
       utilidadNetaUnitOpt2,
-      margenRealOpt2: margenRealOpt2 * 100,
+      margenRealPctOpt2,
       
-      comisionPlatMonto,
-      bonifVendedorMonto,
-      ivaMontoUnit: ivaMontoUnitOpt1,
+      comisionPlatMontoOpt1,
+      bonifVendedorMontoOpt1,
+      bonifVendedorMontoOpt2,
+      ivaMontoUnitOpt1,
       
       cantidadProyectada,
-      totalVentasProyectadas,
+      totalVentasProyectadasOpt1,
       totalCostoProducto,
       totalPickingEmpaque,
       totalOtrosGastos,
       totalProvisionFugaProyectada,
       totalComisionPlataforma,
-      totalBonifVendedor,
-      totalIvaMonto,
-      totalUtilidadNeta,
+      totalBonifVendedorOpt1,
+      totalIvaMontoOpt1,
+      totalUtilidadNetaOpt1,
       totalUtilidadNetaOpt2,
-      totalDeduciblesProyectado
+      totalDeduciblesProyectadoOpt1
     };
   }, [simCogs, simOps, simOtros, simMargenDeseado, simDevRate, simLossRate, simBonifVendedor, simPlatFee, simCantidadDroko, simAplicaIvaDroko, simTarifaIvaDroko, simCantidadEcom, simAplicaIvaEcom, simTarifaIvaEcom, simCanal]);
 
@@ -602,20 +601,20 @@ export default function CalculadoraPage() {
 
                   <div className="pt-2 border-t border-gray-800">
                     <div className="flex justify-between text-[11px] mb-1">
-                      <span className="text-gray-300 font-bold">% Bonificación Cumplimiento Vendedor:</span>
+                      <span className="text-gray-300 font-bold">% Comisión / Bonificación Vendedor:</span>
                       <span className="font-mono text-[#FFD800] font-bold">{simBonifVendedor}%</span>
                     </div>
                     <input
                       type="range"
                       min="0"
-                      max="15"
+                      max="20"
                       step="0.5"
                       value={simBonifVendedor}
                       onChange={(e) => setSimBonifVendedor(Number(e.target.value))}
                       className="w-full accent-[#FFD800] cursor-pointer"
                     />
-                    <p className="text-[9px] text-gray-500 italic mt-0.5">
-                      (Aplica a proyecciones Opc 1 y Opc 2)
+                    <p className="text-[9px] text-gray-400 italic mt-0.5">
+                      Evalúa abajo el impacto entre subir el precio de venta o absorber la comisión en tu margen.
                     </p>
                   </div>
                 </div>
@@ -626,50 +625,50 @@ export default function CalculadoraPage() {
           {/* TARJETAS RESULTADO PRECIO SUGERIDO */}
           <div className="space-y-4">
             {simCanal === 'ECOM' ? (
-              // VISTA DUAL PARA E-COMMERCE
+              /* VISTA DUAL DE E-COMMERCE (2 OPCIONES ESTRATÉGICAS) */
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 
-                {/* OPCION 1: MANTENER GANANCIA (SUBIR PRECIO) */}
+                {/* OPCIÓN 1: SUBIR EL PRECIO DE VENTA (CONSERVA GANANCIA) */}
                 <div className="bg-white border-2 border-[#FFD800] rounded-2xl p-5 shadow-sm flex flex-col justify-between space-y-4">
                   <div className="text-center space-y-1">
                     <span className="text-[10px] font-satoshi-black text-gray-500 uppercase tracking-widest font-bold block">
-                      OPC 1: PRECIO SUGERIDO BLINDADO
+                      OPCIÓN 1: SUBIR PRECIO DE VENTA
                     </span>
                     <div className="text-3xl font-black text-gray-900 font-satoshi-black">
                       {formatoCOP(calculoSimulador.precioSugeridoUnit)}
                     </div>
                     <p className="text-[9px] text-emerald-700 font-satoshi-black">
-                      Garantiza {simMargenDeseado}% de utilidad neta
+                      Conserva intacto el {simMargenDeseado}% de margen neto
                     </p>
                   </div>
 
                   <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 text-center">
                     <span className="text-[10px] text-emerald-800 font-satoshi-black uppercase block font-bold">
-                      Ganancia Proyectada ({calculoSimulador.cantidadProyectada} unds)
+                      Ganancia Total ({calculoSimulador.cantidadProyectada} unds)
                     </span>
                     <span className="text-xl font-black text-emerald-900 font-mono">
-                      {formatoCOP(calculoSimulador.totalUtilidadNeta)}
+                      {formatoCOP(calculoSimulador.totalUtilidadNetaOpt1)}
                     </span>
                   </div>
                 </div>
 
-                {/* OPCION 2: MANTENER PRECIO (ABSORBER EL IMPACTO) */}
+                {/* OPCIÓN 2: MANTENER PRECIO BASE (DISMINUYE MARGEN NETO) */}
                 <div className="bg-white border border-gray-300 rounded-2xl p-5 shadow-sm flex flex-col justify-between space-y-4">
                   <div className="text-center space-y-1">
                     <span className="text-[10px] font-satoshi-black text-gray-500 uppercase tracking-widest font-bold block">
-                      OPC 2: MANTENER PRECIO BASE
+                      OPCIÓN 2: MANTENER PRECIO BASE
                     </span>
                     <div className="text-3xl font-black text-gray-600 font-satoshi-black">
                       {formatoCOP(calculoSimulador.precioBaseOpt2)}
                     </div>
                     <p className="text-[9px] text-amber-600 font-satoshi-black">
-                      Margen real cae al {calculoSimulador.margenRealOpt2.toFixed(1)}% por bonificación al vendedor
+                      El margen neto cae al {calculoSimulador.margenRealPctOpt2.toFixed(1)}% por la comisión ({simBonifVendedor}%)
                     </p>
                   </div>
 
                   <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-center">
                     <span className="text-[10px] text-gray-600 font-satoshi-black uppercase block font-bold">
-                      Ganancia Proyectada ({calculoSimulador.cantidadProyectada} unds)
+                      Ganancia Total ({calculoSimulador.cantidadProyectada} unds)
                     </span>
                     <span className="text-xl font-black text-gray-800 font-mono">
                       {formatoCOP(calculoSimulador.totalUtilidadNetaOpt2)}
@@ -679,7 +678,7 @@ export default function CalculadoraPage() {
 
               </div>
             ) : (
-              // VISTA UNICA (DROKO, POS, MAYOR)
+              /* VISTA ÚNICA PARA POS, MAYOR Y DROKO */
               <div className="bg-white border-2 border-[#FFD800] rounded-2xl p-6 shadow-sm flex flex-col justify-between space-y-4">
                 <div className="text-center space-y-1">
                   <span className="text-[10px] font-satoshi-black text-gray-500 uppercase tracking-widest font-bold block">
@@ -695,11 +694,11 @@ export default function CalculadoraPage() {
               </div>
             )}
 
-            {/* DESGLOSE DE DEDUCIBLES (SOLO DROKO Y E-COM COMPARTEN TABLA LARGA) */}
+            {/* DESGLOSE DE DEDUCIBLES (DROKO Y E-COMMERCE) */}
             {(simCanal === 'DROKO' || simCanal === 'ECOM') ? (
               <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-1.5 text-[11px] shadow-sm font-satoshi-regular">
                 <span className="text-[10px] font-satoshi-black uppercase text-gray-600 block font-bold border-b border-gray-200 pb-1 mb-2">
-                  Desglose de Deducibles ({calculoSimulador.cantidadProyectada} unds) - Basado en Opc 1:
+                  Desglose de Deducibles ({calculoSimulador.cantidadProyectada} unds) - Basado en Opción 1:
                 </span>
                 <div className="flex justify-between text-gray-600">
                   <span>Inversión Producto (COGS):</span>
@@ -727,8 +726,8 @@ export default function CalculadoraPage() {
 
                 {simCanal === 'ECOM' && simBonifVendedor > 0 && (
                   <div className="flex justify-between text-gray-600">
-                    <span>Bonificación Vendedor ({simBonifVendedor}%):</span>
-                    <span className="font-mono text-amber-800 font-bold">{formatoCOP(calculoSimulador.totalBonifVendedor)}</span>
+                    <span>Comisión / Bonificación Vendedor ({simBonifVendedor}%):</span>
+                    <span className="font-mono text-amber-800 font-bold">{formatoCOP(calculoSimulador.totalBonifVendedorOpt1)}</span>
                   </div>
                 )}
 
@@ -742,13 +741,13 @@ export default function CalculadoraPage() {
                 {((simCanal === 'DROKO' && simAplicaIvaDroko) || (simCanal === 'ECOM' && simAplicaIvaEcom)) && (
                   <div className="flex justify-between text-gray-600">
                     <span>Monto IVA ({simCanal === 'DROKO' ? simTarifaIvaDroko : simTarifaIvaEcom}%):</span>
-                    <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalIvaMonto)}</span>
+                    <span className="font-mono text-gray-900 font-bold">{formatoCOP(calculoSimulador.totalIvaMontoOpt1)}</span>
                   </div>
                 )}
 
                 <div className="flex justify-between text-gray-900 font-satoshi-black pt-1 border-t border-gray-200 font-bold">
                   <span>Total Deducibles (Costo Real):</span>
-                  <span className="font-mono text-red-600">{formatoCOP(calculoSimulador.totalDeduciblesProyectado)}</span>
+                  <span className="font-mono text-red-600">{formatoCOP(calculoSimulador.totalDeduciblesProyectadoOpt1)}</span>
                 </div>
               </div>
             ) : (
@@ -761,7 +760,7 @@ export default function CalculadoraPage() {
 
                 <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-center shadow-sm">
                   <span className="text-[9px] text-emerald-800 block uppercase font-satoshi-black">Utilidad Neta / Und</span>
-                  <span className="font-mono font-bold text-emerald-900">{formatoCOP(calculoSimulador.utilidadNetaUnit)}</span>
+                  <span className="font-mono font-bold text-emerald-900">{formatoCOP(calculoSimulador.utilidadNetaUnitOpt1)}</span>
                 </div>
               </div>
             )}
